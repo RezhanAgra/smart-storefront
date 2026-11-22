@@ -1,0 +1,20 @@
+---
+// Route statis ini wajib ada: tanpa file ini, /404 ditangkap oleh [username].astro dan redirect berputar terus.
+import Base from "../layouts/Base.astro";
+import SiteHeader from "../components/SiteHeader.astro";
+import SiteFooter from "../components/SiteFooter.astro";
+Astro.response.status = 404;
+---
+
+<Base title="Halaman tidak ditemukan" noindex>
+  <SiteHeader />
+  <main class="mx-auto max-w-md px-5 py-20">
+    <div class="glass-card rounded-3xl p-8">
+      <p class="text-sm font-medium text-indigo-300">404</p>
+      <h1 class="mt-1 text-2xl font-bold">Toko atau halaman ini tidak ada</h1>
+      <p class="mt-2 text-slate-300">Periksa lagi ejaan username di link. Username selalu huruf kecil, tanpa spasi.</p>
+      <a href="/" class="btn-glow mt-6 rounded-xl px-5">Ke beranda smart-storefront</a>
+    </div>
+  </main>
+  <SiteFooter />
+</Base>

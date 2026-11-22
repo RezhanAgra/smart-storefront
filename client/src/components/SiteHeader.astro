@@ -1,0 +1,22 @@
+---
+interface Props {
+  showLogin?: boolean;
+}
+const { showLogin = false } = Astro.props;
+---
+
+<header class="sticky top-4 z-20 mx-4 sm:mx-auto sm:max-w-5xl">
+  <nav aria-label="Utama" class="surface flex min-h-14 flex-wrap items-center justify-between gap-x-4 rounded-2xl px-4 py-1.5 backdrop-blur">
+    {/* Wordmark teks sebagai placeholder logo sampai ada logo resmi. */}
+    <a href="/" class="inline-flex min-h-11 items-center font-display text-lg font-bold text-white hover:text-indigo-200">
+      smart-storefront
+    </a>
+    {
+      showLogin && (
+        <a href="/login" class="btn-ghost text-sm">
+          Masuk
+        </a>
+      )
+    }
+  </nav>
+</header>

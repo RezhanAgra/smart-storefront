@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String           @id @default(auto()) @map("_id") @db.ObjectId
+  username     String           @unique
+  email        String           @unique
+  passwordHash String
+  displayName  String
+  bio          String?
+  avatarUrl    String?
+  themeColor   String           @default("#0f172a")
+  /// Diisi manual oleh admin. Badge verifikasi di halaman toko hanya tampil jika true.
+  isVerified   Boolean          @default(false)
+  items        Item[]
+  orders       Order[]
+  events       AnalyticsEvent[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+model Item {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String   @db.ObjectId
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// "link" atau "product"
+  type        String   @default("product")
+  title       String
+  description String?
+  price       Int?     @default(0)
+  stock       Int?     @default(0)
+  url         String?
+  imageUrl    String?
+  orderIndex  Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, orderIndex])
+}
+
+/// Pesanan lewat Midtrans Snap. Judul dan harga produk disalin saat checkout
+/// agar riwayat transaksi tetap utuh walau item diubah atau dihapus.
+model Order {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  /// order_id yang dikirim ke Midtrans
+  orderCode   String    @unique
+  userId      String    @db.ObjectId
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId      String    @db.ObjectId
+  itemTitle   String
+  unitPrice   Int
+  quantity    Int
+  grossAmount Int
+  buyerName   String
+  buyerEmail  String
+  note        String?
+  /// PENDING | PAID | FAILED
+  status      String    @default("PENDING")
+  paymentType String?
+  snapToken   String?
+  paidAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+/// Kunjungan halaman toko ("view") dan klik item ("click").
+model AnalyticsEvent {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// view | click
+  type      String
+  itemId    String?  @db.ObjectId
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}

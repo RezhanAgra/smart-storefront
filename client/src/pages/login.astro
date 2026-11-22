@@ -1,0 +1,177 @@
+---
+import Base from "../layouts/Base.astro";
+import SiteHeader from "../components/SiteHeader.astro";
+import SiteFooter from "../components/SiteFooter.astro";
+import { getSessionUser, siteHost } from "../lib/api";
+
+// Sudah login? Langsung ke dashboard.
+const user = await getSessionUser(Astro.cookies.get("token")?.value);
+if (user) return Astro.redirect("/dashboard");
+
+const initialMode = Astro.url.searchParams.get("mode") === "register" ? "register" : "login";
+const tabClass =
+  "min-h-11 flex-1 rounded-full text-sm font-medium text-slate-300 transition-colors hover:text-white aria-pressed:bg-white/10 aria-pressed:text-white aria-pressed:shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]";
+---
+
+<Base title="Masuk atau daftar | smart-storefront" noindex>
+  <SiteHeader />
+  <main class="flex min-h-[calc(100dvh-6rem)] items-center justify-center px-4 py-12">
+    <div class="glass-card w-full max-w-md rounded-3xl p-6 sm:p-8">
+      <h1 class="text-2xl font-bold">Kelola halaman tokomu</h1>
+      <p class="mt-1 text-sm text-slate-400">Masuk ke dashboard, atau buat akun baru dalam satu menit.</p>
+
+      <div class="mt-6 flex gap-1 rounded-full border border-white/10 bg-white/[0.04] p-1" role="group" aria-label="Pilih form">
+        <button type="button" class={tabClass} data-mode="login" aria-pressed={initialMode === "login" ? "true" : "false"}>
+          Masuk
+        </button>
+        <button type="button" class={tabClass} data-mode="register" aria-pressed={initialMode === "register" ? "true" : "false"}>
+          Daftar Akun
+        </button>
+      </div>
+
+      <p id="form-error" role="alert" class="mt-4 hidden rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200"></p>
+
+      <form id="login-form" class="mt-5 space-y-4" hidden={initialMode !== "login"} novalidate>
+        <div>
+          <label for="login-email" class="label">Email</label>
+          <input id="login-email" name="email" type="email" autocomplete="email" required class="glass-input mt-1" />
+        </div>
+        <div>
+          <label for="login-password" class="label">Password</label>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" required class="glass-input mt-1" />
+        </div>
+        <button type="submit" class="btn-glow w-full rounded-xl">Masuk ke dashboard</button>
+      </form>
+
+      <form id="register-form" class="mt-5 space-y-4" hidden={initialMode !== "register"} novalidate>
+        <div>
+          <label for="reg-name" class="label">Nama toko atau nama kamu</label>
+          <input id="reg-name" name="displayName" autocomplete="organization" required class="glass-input mt-1" />
+        </div>
+        <div>
+          <label for="reg-username" class="label">Username</label>
+          <input
+            id="reg-username"
+            name="username"
+            autocomplete="username"
+            autocapitalize="none"
+            spellcheck="false"
+            required
+            minlength="3"
+            maxlength="30"
+            pattern="[a-z0-9]{3,30}"
+            aria-describedby="username-hint"
+            class="glass-input mt-1"
+          />
+          <p id="username-hint" class="mt-1.5 text-sm text-slate-400">
+            Huruf kecil dan angka. Alamat tokomu:
+            <span class="font-medium text-slate-100 break-all">{siteHost(Astro.site, Astro.url)}/<span id="username-preview">username</span></span>
+          </p>
+        </div>
+        <div>
+          <label for="reg-email" class="label">Email</label>
+          <input id="reg-email" name="email" type="email" autocomplete="email" required class="glass-input mt-1" />
+        </div>
+        <div>
+          <label for="reg-password" class="label">Password</label>
+          <input
+            id="reg-password"
+            name="password"
+            type="password"
+            autocomplete="new-password"
+            required
+            minlength="8"
+            aria-describedby="password-hint"
+            class="glass-input mt-1"
+          />
+          <p id="password-hint" class="mt-1.5 text-sm text-slate-400">Minimal 8 karakter.</p>
+        </div>
+        <button type="submit" class="btn-glow w-full rounded-xl">Buat akun dan buka dashboard</button>
+      </form>
+    </div>
+  </main>
+  <SiteFooter />
+</Base>
+
+<script>
+  import { API_URL, errorMessage } from "../lib/api";
+
+  const errorBox = document.querySelector<HTMLParagraphElement>("#form-error")!;
+  const forms = {
+    login: document.querySelector<HTMLFormElement>("#login-form")!,
+    register: document.querySelector<HTMLFormElement>("#register-form")!,
+  };
+  type Mode = keyof typeof forms;
+
+  const showError = (message: string | null) => {
+    errorBox.textContent = message ?? "";
+    errorBox.classList.toggle("hidden", !message);
+  };
+
+  // Ganti form Masuk / Daftar tanpa reload, dan simpan pilihan di URL agar bisa dibagikan.
+  document.querySelectorAll<HTMLButtonElement>("[data-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const mode = button.dataset.mode as Mode;
+      document
+        .querySelectorAll<HTMLButtonElement>("[data-mode]")
+        .forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
+      forms.login.hidden = mode !== "login";
+      forms.register.hidden = mode !== "register";
+      showError(null);
+      history.replaceState(null, "", mode === "register" ? "?mode=register" : location.pathname);
+      forms[mode].querySelector("input")?.focus();
+    });
+  });
+
+  // Username dipaksa huruf kecil saat diketik, dan pratinjau alamat toko ikut berubah.
+  const usernameInput = document.querySelector<HTMLInputElement>("#reg-username")!;
+  const preview = document.querySelector<HTMLSpanElement>("#username-preview")!;
+  usernameInput.addEventListener("input", () => {
+    usernameInput.value = usernameInput.value.toLowerCase().replace(/[^a-z0-9]/g, "");
+    preview.textContent = usernameInput.value || "username";
+  });
+
+  async function submit(form: HTMLFormElement, endpoint: "login" | "register") {
+    showError(null);
+    if (!form.checkValidity()) {
+      const invalid = form.querySelector<HTMLInputElement>(":invalid");
+      const label = invalid ? form.querySelector(`label[for="${invalid.id}"]`)?.textContent : null;
+      showError(label ? `Periksa kolom "${label}". ${invalid?.validationMessage ?? ""}` : "Lengkapi semua kolom.");
+      invalid?.focus();
+      return;
+    }
+
+    const button = form.querySelector<HTMLButtonElement>("button[type=submit]")!;
+    const originalLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = "Memproses...";
+
+    try {
+      const res = await fetch(`${API_URL}/api/auth/${endpoint}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.fromEntries(new FormData(form))),
+      });
+      if (!res.ok) {
+        showError(await errorMessage(res, "Gagal memproses. Coba lagi."));
+        return;
+      }
+      location.assign("/dashboard");
+    } catch {
+      showError("Tidak bisa terhubung ke server. Pastikan API berjalan di " + API_URL + ".");
+    } finally {
+      button.disabled = false;
+      button.textContent = originalLabel;
+    }
+  }
+
+  forms.login.addEventListener("submit", (e) => {
+    e.preventDefault();
+    void submit(forms.login, "login");
+  });
+  forms.register.addEventListener("submit", (e) => {
+    e.preventDefault();
+    void submit(forms.register, "register");
+  });
+</script>

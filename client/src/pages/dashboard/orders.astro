@@ -1,0 +1,162 @@
+---
+import Base from "../../layouts/Base.astro";
+import DashboardNav from "../../components/DashboardNav.astro";
+import { requireUser } from "../../lib/api";
+
+const user = await requireUser(Astro);
+if (!user) return Astro.redirect("/login");
+
+const filters = [
+  { value: "", label: "Semua" },
+  { value: "PAID", label: "Dibayar" },
+  { value: "PENDING", label: "Menunggu" },
+  { value: "FAILED", label: "Gagal" },
+];
+---
+
+<Base title="Pesanan | smart-storefront" noindex>
+  <DashboardNav user={user} active="orders" />
+
+  <main class="mx-auto max-w-6xl px-4 py-8">
+    <h1 class="text-2xl font-bold">Riwayat transaksi</h1>
+    <p class="mt-1 text-sm text-slate-400">Pembayaran lewat Midtrans. Status diperbarui otomatis dari notifikasi Midtrans.</p>
+
+    <div class="mt-6 flex flex-wrap gap-2" role="group" aria-label="Filter status">
+      {
+        filters.map((f, i) => (
+          <button
+            type="button"
+            data-filter={f.value}
+            aria-pressed={i === 0 ? "true" : "false"}
+            class="min-h-11 rounded-xl border border-white/10 px-4 text-sm font-medium text-slate-300 transition-colors hover:bg-white/[0.06] hover:text-white aria-pressed:border-white/25 aria-pressed:bg-white/10 aria-pressed:text-white"
+          >
+            {f.label}
+          </button>
+        ))
+      }
+    </div>
+
+    <div id="orders" class="mt-6" aria-live="polite">
+      <p data-state="loading" class="text-slate-400">Memuat pesanan...</p>
+
+      <div data-state="error" hidden class="glass-card rounded-2xl p-6">
+        <p id="error-text" class="text-rose-200">Pesanan tidak bisa dimuat.</p>
+        <button type="button" id="retry" class="btn-ghost mt-4">Coba lagi</button>
+      </div>
+
+      <p data-state="empty" hidden class="glass-card rounded-2xl p-6 text-slate-300">
+        Belum ada pesanan dengan status ini. Pesanan muncul di sini setelah pembeli menekan Bayar di halaman tokomu.
+      </p>
+
+      <div data-state="ready" hidden class="glass-card overflow-hidden rounded-2xl">
+        <div class="md:overflow-x-auto">
+          {/* Di layar kecil setiap baris tampil sebagai kartu berlabel, di md ke atas sebagai tabel. */}
+          <table class="w-full text-left text-sm max-md:block md:min-w-[52rem]">
+            <caption class="sr-only">Daftar pesanan, terbaru di atas</caption>
+            <thead class="border-b border-white/10 bg-white/[0.03] text-slate-400 max-md:sr-only">
+              <tr>
+                <th scope="col" class="px-4 py-3 font-medium">Tanggal</th>
+                <th scope="col" class="px-4 py-3 font-medium">Kode</th>
+                <th scope="col" class="px-4 py-3 font-medium">Produk</th>
+                <th scope="col" class="px-4 py-3 font-medium">Pembeli</th>
+                <th scope="col" class="px-4 py-3 text-right font-medium">Total</th>
+                <th scope="col" class="px-4 py-3 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody id="order-body" class="divide-y divide-white/10 max-md:block"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</Base>
+
+<script>
+  import { errorMessage, formatRupiah } from "../../lib/api";
+  import { api, formatDateTime, redirectIfUnauthorized, showState } from "../../lib/client";
+  import type { Order, OrderStatus } from "../../types/store";
+
+  const root = document.querySelector<HTMLElement>("#orders")!;
+  const body = document.querySelector<HTMLTableSectionElement>("#order-body")!;
+  let status = "";
+
+  // Status dibedakan dengan teks dan warna sekaligus, bukan warna saja.
+  const BADGE: Record<OrderStatus, { label: string; cls: string }> = {
+    PAID: { label: "PAID", cls: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200" },
+    PENDING: { label: "PENDING", cls: "border-amber-400/30 bg-amber-400/10 text-amber-200" },
+    FAILED: { label: "FAILED", cls: "border-rose-400/30 bg-rose-400/10 text-rose-200" },
+  };
+
+  /** Label kolom ditampilkan lewat ::before hanya di mobile, saat header tabel disembunyikan. */
+  const cell = (label: string, ...children: (string | Node)[]) => {
+    const td = document.createElement("td");
+    td.dataset.label = label;
+    td.className =
+      "px-4 py-3 align-top max-md:px-0 max-md:py-1 max-md:before:block max-md:before:text-xs max-md:before:text-slate-400 max-md:before:content-[attr(data-label)]";
+    td.append(...children);
+    return td;
+  };
+  const muted = (text: string) => {
+    const span = document.createElement("span");
+    span.className = "block text-xs text-slate-400 break-all";
+    span.textContent = text;
+    return span;
+  };
+
+  function row(order: Order) {
+    const tr = document.createElement("tr");
+    tr.className = "transition-colors hover:bg-white/[0.03] max-md:grid max-md:grid-cols-2 max-md:gap-x-4 max-md:gap-y-2 max-md:p-4";
+
+    const product = document.createElement("span");
+    product.className = "block text-slate-100";
+    product.textContent = order.itemTitle;
+    const buyer = document.createElement("span");
+    buyer.className = "block text-slate-100";
+    buyer.textContent = order.buyerName;
+
+    const badge = document.createElement("span");
+    badge.className = `inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold tracking-wide ${BADGE[order.status].cls}`;
+    badge.textContent = BADGE[order.status].label;
+
+    const total = cell("Total", formatRupiah(order.grossAmount));
+    total.classList.add("md:text-right", "tabular-nums", "text-slate-100");
+
+    tr.append(
+      cell("Tanggal", formatDateTime(order.createdAt)),
+      cell("Kode", order.orderCode),
+      cell("Produk", product, muted(`${order.quantity} pcs`), ...(order.note ? [muted(`Catatan: ${order.note}`)] : [])),
+      cell("Pembeli", buyer, muted(order.buyerEmail)),
+      total,
+      cell("Status", badge, ...(order.paymentType ? [muted(order.paymentType.replace(/_/g, " "))] : [])),
+    );
+    return tr;
+  }
+
+  async function load() {
+    showState(root, "loading");
+    try {
+      const res = await api(`/orders${status ? `?status=${status}` : ""}`);
+      if (redirectIfUnauthorized(res)) return;
+      if (!res.ok) throw new Error(await errorMessage(res, "Pesanan tidak bisa dimuat."));
+      const { orders } = (await res.json()) as { orders: Order[] };
+      body.replaceChildren(...orders.map(row));
+      showState(root, orders.length ? "ready" : "empty");
+    } catch (err) {
+      document.querySelector("#error-text")!.textContent =
+        err instanceof TypeError ? "Tidak bisa terhubung ke server." : (err as Error).message;
+      showState(root, "error");
+    }
+  }
+
+  document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      status = button.dataset.filter ?? "";
+      document
+        .querySelectorAll<HTMLButtonElement>("[data-filter]")
+        .forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
+      void load();
+    });
+  });
+  document.querySelector("#retry")!.addEventListener("click", () => void load());
+  void load();
+</script>

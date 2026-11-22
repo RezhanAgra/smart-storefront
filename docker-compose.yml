@@ -1,0 +1,25 @@
+name: smart-storefront
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: smart-storefront-mongo
+    # Prisma butuh replica set untuk transaksi, jadi MongoDB dijalankan sebagai single-node replica set.
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      # Inisialisasi replica set saat pertama kali jalan. Host "localhost:27017" dipakai agar
+      # aplikasi di mesin host bisa terhubung lewat port yang dipetakan.
+      test: >
+        echo "try { rs.status() } catch (err) { rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]}) }"
+        | mongosh --port 27017 --quiet
+      interval: 5s
+      timeout: 10s
+      start_period: 10s
+      retries: 30
+
+volumes:
+  mongo_data:

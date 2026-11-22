@@ -1,0 +1,14 @@
+import { PrismaClient } from "@prisma/client";
+
+// Simpan instance di globalThis agar hot-reload `tsx watch` tidak membuat koneksi baru setiap kali file berubah.
+const globalForPrisma = globalThis as typeof globalThis & { prisma?: PrismaClient };
+
+export const prisma: PrismaClient =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
+  });
+
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma;
+}

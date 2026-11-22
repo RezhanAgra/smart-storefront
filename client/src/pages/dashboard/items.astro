@@ -1,0 +1,375 @@
+---
+import Base from "../../layouts/Base.astro";
+import DashboardNav from "../../components/DashboardNav.astro";
+import { requireUser } from "../../lib/api";
+
+const user = await requireUser(Astro);
+if (!user) return Astro.redirect("/login");
+
+const radioClass =
+  "flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 text-sm transition-colors hover:bg-white/[0.04] has-[:checked]:border-indigo-300/50 has-[:checked]:bg-indigo-400/10 has-[:checked]:text-white has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-indigo-300";
+---
+
+<Base title="Produk & Tautan | smart-storefront" noindex>
+  <DashboardNav user={user} active="items" />
+
+  <main class="mx-auto max-w-6xl px-4 py-8">
+    <h1 class="text-2xl font-bold">Produk & Tautan</h1>
+    <p class="mt-1 text-sm text-slate-400">Item aktif tampil di halaman tokomu sesuai urutan di daftar.</p>
+
+    <div class="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+      <form id="item-form" class="glass-card rounded-2xl p-5 sm:p-6 lg:sticky lg:top-40" novalidate>
+        <h2 class="text-lg font-bold">Tambah item</h2>
+
+        <fieldset class="mt-4">
+          <legend class="label">Jenis</legend>
+          <div class="mt-1 grid grid-cols-2 gap-2">
+            <label class={radioClass}>
+              <input type="radio" name="type" value="product" checked class="size-4 accent-indigo-400" />
+              Produk
+            </label>
+            <label class={radioClass}>
+              <input type="radio" name="type" value="link" class="size-4 accent-indigo-400" />
+              Tautan
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="mt-4">
+          <label for="f-title" class="label">Judul</label>
+          <input id="f-title" name="title" required maxlength="120" class="glass-input mt-1" />
+        </div>
+
+        <div class="mt-4">
+          <label for="f-url" class="label">
+            <span data-for="product">Link pembelian di luar (opsional)</span>
+            <span data-for="link" hidden>URL tujuan</span>
+          </label>
+          <input id="f-url" name="url" type="url" inputmode="url" placeholder="https://" class="glass-input mt-1" />
+          <p data-for="product" class="mt-1.5 text-xs text-slate-400">
+            Dipakai jika pembayaran Midtrans belum aktif atau harga Rp 0.
+          </p>
+        </div>
+
+        <div class="mt-4">
+          <label for="f-description" class="label">Deskripsi (opsional)</label>
+          <textarea id="f-description" name="description" rows="2" maxlength="500" class="glass-input mt-1 py-2.5"></textarea>
+        </div>
+
+        <div id="product-fields">
+          <div class="mt-4 grid grid-cols-2 gap-3">
+            <div>
+              <label for="f-price" class="label">Harga (Rp)</label>
+              <input id="f-price" name="price" type="number" min="0" step="1" inputmode="numeric" class="glass-input mt-1" />
+            </div>
+            <div>
+              <label for="f-stock" class="label">Stok</label>
+              <input id="f-stock" name="stock" type="number" min="0" step="1" inputmode="numeric" class="glass-input mt-1" />
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <span class="label" id="image-label">Gambar produk (opsional)</span>
+            <label
+              id="dropzone"
+              for="f-image"
+              class="mt-1 flex min-h-32 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/20 bg-white/[0.03] p-4 text-center text-sm text-slate-300 transition-colors hover:border-indigo-400 has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-indigo-300 data-[drag]:border-indigo-400 data-[drag]:bg-indigo-400/10"
+            >
+              <img id="image-preview" alt="Pratinjau gambar produk" width="96" height="96" class="size-24 rounded-xl border border-white/10 object-cover" hidden />
+              <span id="dropzone-text">
+                <span class="font-semibold text-white">Pilih gambar</span> atau seret ke sini
+              </span>
+              <span class="text-xs text-slate-400">JPG, PNG, atau WebP, maks. 2 MB</span>
+              <input id="f-image" type="file" accept="image/jpeg,image/png,image/webp" aria-labelledby="image-label" class="sr-only" />
+            </label>
+            <input type="hidden" name="imageUrl" id="f-image-url" />
+            <button type="button" id="image-remove" class="btn-ghost mt-2 text-sm" hidden>Hapus gambar</button>
+          </div>
+        </div>
+
+        <p id="form-status" role="status" class="mt-4 hidden rounded-xl border px-3 py-2 text-sm"></p>
+
+        <button type="submit" class="btn-glow mt-5 w-full rounded-xl">Simpan item</button>
+      </form>
+
+      <section aria-labelledby="items-heading">
+        <h2 id="items-heading" class="text-lg font-bold">Item kamu</h2>
+
+        <div id="items" class="mt-4" aria-live="polite">
+          <p data-state="loading" class="text-slate-400">Memuat item...</p>
+
+          <div data-state="error" hidden class="glass-card rounded-2xl p-6">
+            <p id="list-error-text" class="text-rose-200">Item tidak bisa dimuat.</p>
+            <button type="button" id="retry" class="btn-ghost mt-4">Coba lagi</button>
+          </div>
+
+          <p data-state="empty" hidden class="rounded-2xl border border-dashed border-white/15 p-8 text-center text-slate-300">
+            Belum ada item. Tambahkan produk atau tautan pertama lewat form di samping.
+          </p>
+
+          <ul data-state="ready" hidden id="item-list" class="space-y-3"></ul>
+        </div>
+
+        <template id="item-template">
+          <li class="glass-card flex items-start gap-4 rounded-2xl p-4">
+            <div data-field="thumb" class="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/5 text-slate-400"></div>
+            <div class="min-w-0 flex-1">
+              <p class="text-xs font-medium text-slate-400" data-field="type"></p>
+              <p class="font-semibold text-white break-words" data-field="title"></p>
+              <p class="mt-0.5 text-sm" data-field="meta"></p>
+              <p class="mt-0.5 text-xs text-slate-400 break-all" data-field="url"></p>
+            </div>
+            <button
+              type="button"
+              data-action="delete"
+              class="min-h-11 shrink-0 rounded-xl border border-rose-400/30 px-3 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/10 active:translate-y-px disabled:opacity-50"
+            >
+              Hapus
+            </button>
+          </li>
+        </template>
+      </section>
+    </div>
+  </main>
+</Base>
+
+<script>
+  import { errorMessage, formatRupiah } from "../../lib/api";
+  import { api, redirectIfUnauthorized, showState } from "../../lib/client";
+  import type { DashboardItem, ItemType } from "../../types/store";
+
+  const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
+
+  const root = $<HTMLElement>("#items");
+  const list = $<HTMLUListElement>("#item-list");
+  const template = $<HTMLTemplateElement>("#item-template");
+  const form = $<HTMLFormElement>("#item-form");
+  const status = $<HTMLElement>("#form-status");
+  const productFields = $<HTMLElement>("#product-fields");
+  const urlInput = $<HTMLInputElement>("#f-url");
+  const submitButton = form.querySelector<HTMLButtonElement>("button[type=submit]")!;
+
+  // --- Daftar item
+  const PACKAGE_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="size-6" aria-hidden="true"><path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5v-9Z M3.5 7.5 12 12l8.5-4.5M12 12v9" stroke-linejoin="round"/></svg>';
+  const LINK_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-6" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" stroke-linecap="round"/></svg>';
+
+  function renderItems(items: DashboardItem[]) {
+    list.replaceChildren(
+      ...items.map((item) => {
+        const node = template.content.firstElementChild!.cloneNode(true) as HTMLLIElement;
+        const field = (name: string) => node.querySelector<HTMLElement>(`[data-field="${name}"]`)!;
+
+        const thumb = field("thumb");
+        if (item.imageUrl) {
+          const img = document.createElement("img");
+          img.src = item.imageUrl;
+          img.alt = "";
+          img.width = 64;
+          img.height = 64;
+          img.loading = "lazy";
+          img.className = "size-full object-cover";
+          thumb.append(img);
+        } else {
+          thumb.innerHTML = item.type === "link" ? LINK_ICON : PACKAGE_ICON;
+        }
+
+        field("type").textContent = (item.type === "link" ? "Tautan" : "Produk") + (item.isActive ? "" : " · disembunyikan");
+        field("title").textContent = item.title;
+
+        const meta = field("meta");
+        if (item.type === "product") {
+          const price = document.createElement("span");
+          price.className = "font-semibold text-emerald-300";
+          price.textContent = item.price ? formatRupiah(item.price) : "Gratis";
+          const stock = document.createElement("span");
+          stock.className = item.stock === 0 ? "text-rose-300" : "text-slate-400";
+          stock.textContent = item.stock === null ? "" : item.stock === 0 ? " · Stok habis" : ` · Stok: ${item.stock}`;
+          meta.append(price, stock);
+        } else if (item.description) {
+          meta.className += " text-slate-400";
+          meta.textContent = item.description;
+        }
+        field("url").textContent = item.url ?? "";
+
+        const del = node.querySelector<HTMLButtonElement>('[data-action="delete"]')!;
+        del.setAttribute("aria-label", `Hapus ${item.title}`);
+        del.addEventListener("click", () => void deleteItem(item, del));
+        return node;
+      }),
+    );
+    showState(root, items.length ? "ready" : "empty");
+  }
+
+  async function loadItems() {
+    showState(root, "loading");
+    try {
+      const res = await api("/items");
+      if (redirectIfUnauthorized(res)) return;
+      if (!res.ok) throw new Error(await errorMessage(res, "Item tidak bisa dimuat."));
+      renderItems(((await res.json()) as { items: DashboardItem[] }).items);
+    } catch (err) {
+      $("#list-error-text").textContent = err instanceof TypeError ? "Tidak bisa terhubung ke server." : (err as Error).message;
+      showState(root, "error");
+    }
+  }
+
+  async function deleteItem(item: DashboardItem, button: HTMLButtonElement) {
+    if (!confirm(`Hapus "${item.title}"? Tindakan ini tidak bisa dibatalkan.`)) return;
+    button.disabled = true;
+    button.textContent = "Menghapus...";
+    try {
+      const res = await api(`/items/${item.id}`, { method: "DELETE" });
+      if (redirectIfUnauthorized(res)) return;
+      if (!res.ok && res.status !== 404) throw new Error(await errorMessage(res, "Gagal menghapus."));
+      await loadItems();
+    } catch (err) {
+      button.disabled = false;
+      button.textContent = "Hapus";
+      alert(err instanceof Error ? err.message : "Gagal menghapus.");
+    }
+  }
+
+  // --- Form
+  function showStatus(message: string, tone: "ok" | "error") {
+    status.textContent = message;
+    status.className = `mt-4 rounded-xl border px-3 py-2 text-sm ${
+      tone === "ok" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200" : "border-rose-400/30 bg-rose-500/10 text-rose-200"
+    }`;
+  }
+
+  // Tautan tidak punya harga, stok, dan gambar, jadi field produk disembunyikan dan URL jadi wajib.
+  function syncType() {
+    const type = new FormData(form).get("type") as ItemType;
+    productFields.hidden = type !== "product";
+    urlInput.required = type === "link";
+    form.querySelectorAll<HTMLElement>("[data-for]").forEach((el) => {
+      el.hidden = el.dataset.for !== type;
+    });
+  }
+  form.querySelectorAll('input[name="type"]').forEach((radio) => radio.addEventListener("change", syncType));
+
+  // --- Upload gambar (klik atau seret)
+  const dropzone = $<HTMLLabelElement>("#dropzone");
+  const fileInput = $<HTMLInputElement>("#f-image");
+  const imageUrl = $<HTMLInputElement>("#f-image-url");
+  const preview = $<HTMLImageElement>("#image-preview");
+  const dropText = $<HTMLElement>("#dropzone-text");
+  const removeImage = $<HTMLButtonElement>("#image-remove");
+  let uploading = false;
+
+  function resetImage() {
+    imageUrl.value = "";
+    fileInput.value = "";
+    preview.hidden = true;
+    preview.removeAttribute("src");
+    removeImage.hidden = true;
+    dropText.innerHTML = '<span class="font-semibold text-white">Pilih gambar</span> atau seret ke sini';
+  }
+
+  async function uploadImage(file: File) {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      showStatus("Format gambar harus JPG, PNG, atau WebP.", "error");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      showStatus("Ukuran gambar maksimal 2 MB.", "error");
+      return;
+    }
+    status.classList.add("hidden");
+    uploading = true;
+    submitButton.disabled = true;
+    preview.src = URL.createObjectURL(file);
+    preview.hidden = false;
+    dropText.textContent = "Mengunggah...";
+    try {
+      const body = new FormData();
+      body.append("image", file);
+      const res = await api("/uploads", { method: "POST", body });
+      if (redirectIfUnauthorized(res)) return;
+      if (!res.ok) throw new Error(await errorMessage(res, "Gagal mengunggah gambar."));
+      imageUrl.value = ((await res.json()) as { url: string }).url;
+      dropText.textContent = `${file.name} terunggah. Klik untuk mengganti.`;
+      removeImage.hidden = false;
+    } catch (err) {
+      resetImage();
+      showStatus(err instanceof TypeError ? "Tidak bisa terhubung ke server." : (err as Error).message, "error");
+    } finally {
+      uploading = false;
+      submitButton.disabled = false;
+    }
+  }
+
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (file) void uploadImage(file);
+  });
+  dropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropzone.dataset.drag = "";
+  });
+  dropzone.addEventListener("dragleave", () => delete dropzone.dataset.drag);
+  dropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    delete dropzone.dataset.drag;
+    const file = e.dataTransfer?.files[0];
+    if (file) void uploadImage(file);
+  });
+  removeImage.addEventListener("click", resetImage);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    status.classList.add("hidden");
+    if (uploading) return;
+
+    if (!form.checkValidity()) {
+      const invalid = form.querySelector<HTMLInputElement>(":invalid");
+      const label = invalid ? form.querySelector(`label[for="${invalid.id}"]`)?.textContent?.trim() : null;
+      showStatus(label ? `Periksa kolom "${label}". ${invalid?.validationMessage ?? ""}` : "Periksa isian form.", "error");
+      invalid?.focus();
+      return;
+    }
+
+    const data = new FormData(form);
+    const type = data.get("type") as ItemType;
+    const text = (key: string) => String(data.get(key) ?? "").trim() || undefined;
+    const payload = {
+      type,
+      title: text("title"),
+      description: text("description"),
+      url: text("url"),
+      ...(type === "product" && {
+        price: text("price") ? Number(text("price")) : undefined,
+        stock: text("stock") ? Number(text("stock")) : undefined,
+        imageUrl: text("imageUrl"),
+      }),
+    };
+
+    submitButton.disabled = true;
+    submitButton.textContent = "Menyimpan...";
+    try {
+      const res = await api("/items", { method: "POST", body: JSON.stringify(payload) });
+      if (redirectIfUnauthorized(res)) return;
+      if (!res.ok) {
+        showStatus(await errorMessage(res, "Gagal menyimpan item."), "error");
+        return;
+      }
+      form.reset();
+      resetImage();
+      syncType();
+      showStatus(`"${payload.title}" tersimpan.`, "ok");
+      await loadItems();
+    } catch {
+      showStatus("Tidak bisa terhubung ke server.", "error");
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = "Simpan item";
+    }
+  });
+
+  $<HTMLButtonElement>("#retry").addEventListener("click", () => void loadItems());
+
+  syncType();
+  void loadItems();
+</script>

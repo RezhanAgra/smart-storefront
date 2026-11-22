@@ -1,0 +1,274 @@
+---
+import Base from "../../layouts/Base.astro";
+import DashboardNav from "../../components/DashboardNav.astro";
+import { requireUser } from "../../lib/api";
+
+const user = await requireUser(Astro);
+if (!user) return Astro.redirect("/login");
+
+// Ikon dipilih per metrik: mata (kunjungan), kursor (klik), struk (pesanan), dompet (pendapatan).
+const kpis = [
+  { key: "views", label: "Kunjungan", tint: "bg-indigo-400/10 text-indigo-200 border-indigo-300/20", icon: "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" },
+  { key: "clicks", label: "Klik item", tint: "bg-cyan-400/10 text-cyan-200 border-cyan-300/20", icon: "M9 3v4M3 9h4M5 5l2.5 2.5M12 12l9 3-4 2-2 4-3-9Z" },
+  { key: "paidOrders", label: "Pesanan dibayar", tint: "bg-violet-400/10 text-violet-200 border-violet-300/20", icon: "M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6M9 12h6" },
+  { key: "revenue", label: "Pendapatan", tint: "bg-emerald-400/10 text-emerald-200 border-emerald-300/20", icon: "M3 7h15a3 3 0 0 1 3 3v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Zm0 0V6a2 2 0 0 1 2-2h11M16 13h2" },
+] as const;
+---
+
+<Base title="Analitik | smart-storefront" noindex>
+  <DashboardNav user={user} active="analytics" />
+
+  <main class="mx-auto max-w-6xl px-4 py-8">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-bold">Analitik</h1>
+        <p class="mt-1 text-sm text-slate-400">Kunjungan halaman, klik item, dan penjualan. Tanggal dalam WIB.</p>
+      </div>
+      <div>
+        <label for="period" class="label">Periode</label>
+        <select id="period" class="glass-input mt-1 w-40 bg-night-raised">
+          <option value="7">7 hari</option>
+          <option value="14" selected>14 hari</option>
+          <option value="30">30 hari</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="analytics" aria-live="polite">
+      <p data-state="loading" class="mt-8 text-slate-400">Memuat analitik...</p>
+
+      <div data-state="error" hidden class="glass-card mt-8 rounded-2xl p-6">
+        <p id="error-text" class="text-rose-200">Analitik tidak bisa dimuat.</p>
+        <button type="button" id="retry" class="btn-ghost mt-4">Coba lagi</button>
+      </div>
+
+      <div data-state="ready" hidden>
+        <ul class="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {
+            kpis.map((k) => (
+              <li class="glass-card rounded-2xl p-4 sm:p-5">
+                <span class={`flex size-10 items-center justify-center rounded-xl border ${k.tint}`} aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="size-5">
+                    <path d={k.icon} />
+                  </svg>
+                </span>
+                <p class="mt-3 text-sm text-slate-400">{k.label}</p>
+                <p class="mt-1 font-display text-2xl font-bold tabular-nums text-white sm:text-3xl break-all" data-kpi={k.key}>
+                  0
+                </p>
+              </li>
+            ))
+          }
+        </ul>
+        <p id="pending-note" class="mt-3 text-sm text-amber-200" hidden></p>
+        <p id="empty-note" class="mt-3 text-sm text-slate-400" hidden>
+          Belum ada aktivitas di periode ini. Bagikan link tokomu agar kunjungan mulai tercatat.
+        </p>
+
+        <div class="mt-6 grid gap-4 lg:grid-cols-2">
+          <section class="glass-card rounded-2xl p-6" aria-labelledby="traffic-heading">
+            <h2 id="traffic-heading" class="font-bold">Kunjungan dan klik</h2>
+            <div class="relative mt-4 h-64">
+              <canvas id="traffic-chart" role="img" aria-label="Grafik kunjungan dan klik harian"></canvas>
+            </div>
+          </section>
+          <section class="glass-card rounded-2xl p-6" aria-labelledby="revenue-heading">
+            <h2 id="revenue-heading" class="font-bold">Pendapatan harian</h2>
+            <div class="relative mt-4 h-64">
+              <canvas id="revenue-chart" role="img" aria-label="Grafik pendapatan harian"></canvas>
+            </div>
+          </section>
+        </div>
+
+        <section class="glass-card mt-6 rounded-2xl p-6" aria-labelledby="top-heading">
+          <h2 id="top-heading" class="font-bold">5 item teratas</h2>
+          <p id="top-empty" class="mt-3 text-sm text-slate-400" hidden>Belum ada klik atau penjualan di periode ini.</p>
+          <div class="mt-3 overflow-x-auto">
+            <table id="top-table" class="w-full min-w-[28rem] text-left text-sm">
+              <thead class="text-slate-400">
+                <tr>
+                  <th scope="col" class="py-2 pr-4 font-medium">Item</th>
+                  <th scope="col" class="py-2 pr-4 text-right font-medium">Klik</th>
+                  <th scope="col" class="py-2 pr-4 text-right font-medium">Terjual</th>
+                  <th scope="col" class="py-2 text-right font-medium">Pendapatan</th>
+                </tr>
+              </thead>
+              <tbody id="top-body" class="divide-y divide-white/10"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+</Base>
+
+<script>
+  import {
+    BarController,
+    BarElement,
+    CategoryScale,
+    Chart,
+    Filler,
+    LinearScale,
+    LineController,
+    LineElement,
+    PointElement,
+    Tooltip,
+    Legend,
+    type ChartConfiguration,
+  } from "chart.js";
+  import { errorMessage, formatNumber, formatRupiah } from "../../lib/api";
+  import { api, redirectIfUnauthorized, showState } from "../../lib/client";
+  import type { AnalyticsSummary } from "../../types/store";
+
+  Chart.register(LineController, LineElement, PointElement, BarController, BarElement, CategoryScale, LinearScale, Filler, Tooltip, Legend);
+
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  Chart.defaults.color = "#94a3b8"; // slate-400
+  Chart.defaults.font.family = '"Inter Variable", system-ui, sans-serif';
+  Chart.defaults.borderColor = "rgba(255,255,255,0.06)";
+  if (reduceMotion) Chart.defaults.animation = false;
+
+  const root = document.querySelector<HTMLElement>("#analytics")!;
+  const period = document.querySelector<HTMLSelectElement>("#period")!;
+  const shortDate = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", timeZone: "UTC" });
+  const label = (day: string) => shortDate.format(new Date(`${day}T00:00:00Z`));
+
+  /** Isi gradasi transparan di bawah garis, dari warna garis ke transparan. */
+  const fadeFill = (rgb: string) => (ctx: { chart: Chart }) => {
+    const { ctx: c, chartArea } = ctx.chart;
+    if (!chartArea) return `rgba(${rgb},0.1)`;
+    const g = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+    g.addColorStop(0, `rgba(${rgb},0.35)`);
+    g.addColorStop(1, `rgba(${rgb},0)`);
+    return g;
+  };
+
+  // "85 rb", "1,2 jt": label sumbu ringkas untuk Rupiah.
+  const compact = new Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 1 });
+
+  const scales = (money = false) => ({
+    x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 12 } },
+    y: {
+      beginAtZero: true,
+      grid: { color: "rgba(255,255,255,0.06)" },
+      border: { display: false },
+      ticks: {
+        precision: 0,
+        callback: (v: string | number) => (money ? `Rp ${compact.format(Number(v))}` : formatNumber(Number(v))),
+      },
+    },
+  });
+
+  let traffic: Chart | null = null;
+  let revenue: Chart | null = null;
+
+  function renderCharts(data: AnalyticsSummary) {
+    const labels = data.labels.map(label);
+    traffic?.destroy();
+    revenue?.destroy();
+
+    const trafficConfig: ChartConfiguration<"line"> = {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          { label: "Kunjungan", data: data.series.views, borderColor: "#818cf8", backgroundColor: fadeFill("129,140,248"), fill: true, cubicInterpolationMode: "monotone", pointRadius: 0, pointHoverRadius: 4 },
+          { label: "Klik", data: data.series.clicks, borderColor: "#22d3ee", backgroundColor: fadeFill("34,211,238"), fill: true, cubicInterpolationMode: "monotone", pointRadius: 0, pointHoverRadius: 4 },
+        ],
+      },
+      options: {
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: { legend: { labels: { usePointStyle: true, boxHeight: 6 } } },
+        scales: scales(),
+      },
+    };
+    traffic = new Chart(document.querySelector<HTMLCanvasElement>("#traffic-chart")!, trafficConfig);
+
+    const revenueConfig: ChartConfiguration<"bar"> = {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [{ label: "Pendapatan", data: data.series.revenue, backgroundColor: "rgba(52,211,153,0.55)", hoverBackgroundColor: "#34d399", borderRadius: 6, maxBarThickness: 28 }],
+      },
+      options: {
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => formatRupiah(Number(ctx.raw)) } } },
+        scales: scales(true),
+      },
+    };
+    revenue = new Chart(document.querySelector<HTMLCanvasElement>("#revenue-chart")!, revenueConfig);
+
+    // Ringkasan teks untuk pembaca layar, karena isi canvas tidak terbaca.
+    document.querySelector("#traffic-chart")!.setAttribute(
+      "aria-label",
+      `Grafik ${data.days} hari: total ${data.totals.views} kunjungan dan ${data.totals.clicks} klik.`,
+    );
+    document.querySelector("#revenue-chart")!.setAttribute(
+      "aria-label",
+      `Grafik pendapatan ${data.days} hari: total ${formatRupiah(data.totals.revenue)}.`,
+    );
+  }
+
+  function renderTop(data: AnalyticsSummary) {
+    const body = document.querySelector<HTMLTableSectionElement>("#top-body")!;
+    document.querySelector<HTMLElement>("#top-empty")!.hidden = data.topItems.length > 0;
+    document.querySelector<HTMLElement>("#top-table")!.hidden = data.topItems.length === 0;
+    body.replaceChildren(
+      ...data.topItems.map((item) => {
+        const tr = document.createElement("tr");
+        const cells = [
+          item.title + (item.type === "link" ? " (tautan)" : ""),
+          formatNumber(item.clicks),
+          item.type === "link" ? "-" : formatNumber(item.paidOrders),
+          item.type === "link" ? "-" : formatRupiah(item.revenue),
+        ];
+        cells.forEach((text, i) => {
+          const td = document.createElement("td");
+          td.textContent = text;
+          td.className = i === 0 ? "py-3 pr-4 text-slate-100" : "py-3 pr-4 text-right tabular-nums last:pr-0";
+          tr.append(td);
+        });
+        return tr;
+      }),
+    );
+  }
+
+  async function load() {
+    showState(root, "loading");
+    try {
+      const res = await api(`/analytics?days=${period.value}`);
+      if (redirectIfUnauthorized(res)) return;
+      if (!res.ok) throw new Error(await errorMessage(res, "Analitik tidak bisa dimuat."));
+      const data = (await res.json()) as AnalyticsSummary;
+
+      const t = data.totals;
+      const values: Record<string, string> = {
+        views: formatNumber(t.views),
+        clicks: formatNumber(t.clicks),
+        paidOrders: formatNumber(t.paidOrders),
+        revenue: formatRupiah(t.revenue),
+      };
+      root.querySelectorAll<HTMLElement>("[data-kpi]").forEach((el) => {
+        el.textContent = values[el.dataset.kpi!] ?? "0";
+      });
+      const pending = document.querySelector<HTMLElement>("#pending-note")!;
+      pending.hidden = t.pendingOrders === 0;
+      pending.textContent = `${t.pendingOrders} pesanan masih menunggu pembayaran.`;
+      document.querySelector<HTMLElement>("#empty-note")!.hidden = t.views + t.clicks + t.paidOrders > 0;
+
+      showState(root, "ready");
+      renderCharts(data);
+      renderTop(data);
+    } catch (err) {
+      document.querySelector("#error-text")!.textContent =
+        err instanceof TypeError ? "Tidak bisa terhubung ke server." : (err as Error).message;
+      showState(root, "error");
+    }
+  }
+
+  period.addEventListener("change", () => void load());
+  document.querySelector("#retry")!.addEventListener("click", () => void load());
+  void load();
+</script>

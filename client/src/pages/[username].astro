@@ -1,0 +1,541 @@
+---
+import Base from "../layouts/Base.astro";
+import type { PublicStoreProfile, StoreItem } from "../types/store";
+import { API_URL, formatRupiah } from "../lib/api";
+import { accentOnDark, readableTextOn, safeHex } from "../lib/color";
+
+const username = Astro.params.username ?? "";
+
+let store: PublicStoreProfile | null = null;
+try {
+  const res = await fetch(`${API_URL}/api/store/${encodeURIComponent(username)}`);
+  if (res.status === 404) return Astro.redirect("/404");
+  if (res.ok) store = (await res.json()) as PublicStoreProfile;
+} catch {
+  // API mati atau tidak terjangkau: tampilkan state error di bawah.
+}
+if (!store) Astro.response.status = 502;
+
+// Warna tema kreator dipakai di cincin avatar. Jika terlalu gelap untuk latar malam, diganti indigo.
+const accent = accentOnDark(safeHex(store?.themeColor));
+const onAccent = readableTextOn(accent);
+const initials = (store?.displayName ?? username)
+  .split(/\s+/)
+  .slice(0, 2)
+  .map((w) => w[0]?.toUpperCase() ?? "")
+  .join("");
+
+const links = store?.items.filter((i) => i.type === "link") ?? [];
+const products = store?.items.filter((i) => i.type === "product") ?? [];
+const paymentsEnabled = store?.payments.enabled ?? false;
+
+const priceLabel = (item: StoreItem) => (item.price && item.price > 0 ? formatRupiah(item.price) : "Gratis");
+const soldOut = (item: StoreItem) => item.stock !== null && item.stock <= 0;
+const canCheckout = (item: StoreItem) => paymentsEnabled && !soldOut(item) && (item.price ?? 0) > 0;
+
+const title = store ? `${store.displayName} (@${store.username})` : "Toko tidak bisa dimuat";
+const description = store ? (store.bio ?? `Link dan produk dari ${store.displayName}.`) : undefined;
+const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?? null;
+---
+
+<Base title={title} description={description} ogImage={ogImage}>
+  {
+    !store ? (
+      <main class="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-5 py-12">
+        <div class="glass-card rounded-3xl p-6">
+          <h1 class="text-2xl font-bold">Toko belum bisa dimuat</h1>
+          <p class="mt-2 text-slate-300">Server sedang tidak bisa dihubungi. Coba muat ulang sebentar lagi.</p>
+          <a href={Astro.url.pathname} class="btn-glow mt-6 rounded-xl px-5">
+            Muat ulang
+          </a>
+        </div>
+      </main>
+    ) : (
+      <>
+        <header class="mx-auto max-w-md px-5 pt-12 text-center" style={`--accent:${accent};--on-accent:${onAccent}`}>
+          <div class="relative mx-auto w-fit">
+            <div class="rounded-full bg-[var(--accent)] p-1">
+              {store.avatarUrl ? (
+                <img
+                  src={store.avatarUrl}
+                  alt={`Foto profil ${store.displayName}`}
+                  width="104"
+                  height="104"
+                  fetchpriority="high"
+                  class="size-[104px] rounded-full border-4 border-night bg-night-raised object-cover"
+                />
+              ) : (
+                <div
+                  class="flex size-[104px] items-center justify-center rounded-full border-4 border-night bg-night-raised font-display text-3xl font-bold text-white"
+                  aria-hidden="true"
+                >
+                  {initials}
+                </div>
+              )}
+            </div>
+            {store.isVerified && (
+              <span
+                class="absolute bottom-1 right-1 flex size-7 items-center justify-center rounded-full border-2 border-night bg-emerald-400 text-night"
+                title="Akun terverifikasi"
+              >
+                <svg viewBox="0 0 20 20" fill="currentColor" class="size-4" aria-hidden="true">
+                  <path
+                    fill-rule="evenodd"
+                    d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.5 7.5a1 1 0 0 1-1.4 0L3.3 9.7a1 1 0 1 1 1.4-1.4l3.8 3.8 6.8-6.8a1 1 0 0 1 1.4 0Z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+                <span class="sr-only">Akun terverifikasi</span>
+              </span>
+            )}
+          </div>
+
+          <h1 class="mt-5 text-3xl font-extrabold leading-tight break-words">{store.displayName}</h1>
+          <p class="mt-2">
+            <span class="inline-block rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+              @{store.username}
+            </span>
+          </p>
+          {store.bio && (
+            <p class="mx-auto mt-4 max-w-sm whitespace-pre-line text-pretty leading-relaxed text-slate-300 break-words">
+              {store.bio}
+            </p>
+          )}
+        </header>
+
+        <main class="mx-auto max-w-md px-5 pb-12">
+          {store.items.length === 0 && (
+            <p class="glass-card mt-10 rounded-2xl p-6 text-center text-slate-300">
+              {store.displayName} belum menambahkan link atau produk.
+            </p>
+          )}
+
+          {links.length > 0 && (
+            <section aria-labelledby="links-heading" class="mt-10">
+              <h2 id="links-heading" class="sr-only">
+                Tautan
+              </h2>
+              <ul class="space-y-3">
+                {links.map((link) => (
+                  <li>
+                    <a
+                      href={link.url ?? undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-track-item={link.id}
+                      class="glass-card glass-card-hover flex min-h-16 items-center gap-4 rounded-2xl p-4"
+                    >
+                      <span
+                        class="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300"
+                        aria-hidden="true"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-5">
+                          <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" stroke-linecap="round" />
+                          <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" stroke-linecap="round" />
+                        </svg>
+                      </span>
+                      <span class="min-w-0 flex-1">
+                        <span class="block font-semibold text-white break-words">{link.title}</span>
+                        {link.description && (
+                          <span class="mt-0.5 block text-sm text-slate-400 break-words">{link.description}</span>
+                        )}
+                      </span>
+                      <span class="sr-only"> (membuka tab baru)</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {products.length > 0 && (
+            <section aria-labelledby="products-heading" class="mt-10">
+              <h2 id="products-heading" class="text-lg font-bold">
+                Produk
+              </h2>
+              <ul class="mt-4 space-y-3">
+                {products.map((product) => (
+                  <li>
+                    <article class="glass-card flex gap-4 rounded-2xl p-4">
+                      {product.imageUrl ? (
+                        <img
+                          src={product.imageUrl}
+                          alt={product.title}
+                          width="80"
+                          height="80"
+                          loading="lazy"
+                          decoding="async"
+                          class="size-20 shrink-0 rounded-xl border border-white/10 bg-white/5 object-cover"
+                        />
+                      ) : (
+                        <div
+                          class="flex size-20 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-400"
+                          aria-hidden="true"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="size-8">
+                            <path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5v-9Z" stroke-linejoin="round" />
+                            <path d="M3.5 7.5 12 12l8.5-4.5M12 12v9" stroke-linejoin="round" />
+                          </svg>
+                        </div>
+                      )}
+                      <div class="flex min-w-0 flex-1 flex-col">
+                        <h3 class="font-semibold leading-snug break-words">{product.title}</h3>
+                        {product.description && (
+                          <p class="mt-1 line-clamp-2 text-sm text-slate-400 break-words">{product.description}</p>
+                        )}
+                        <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <p class="font-bold tabular-nums text-emerald-300">{priceLabel(product)}</p>
+                          {product.stock !== null && (
+                            <p class={`text-xs font-medium ${soldOut(product) ? "text-rose-300" : "text-slate-400"}`}>
+                              {soldOut(product) ? "Stok habis" : `Stok: ${product.stock}`}
+                            </p>
+                          )}
+                        </div>
+                        <div class="mt-3 flex justify-end">
+                          {soldOut(product) ? (
+                            <button type="button" disabled class="btn-ghost rounded-xl px-4 text-xs">
+                              Stok habis
+                            </button>
+                          ) : canCheckout(product) ? (
+                            <button
+                              type="button"
+                              class="buy-button btn-glow rounded-xl px-4 py-2 text-xs"
+                              data-id={product.id}
+                              data-title={product.title}
+                              data-price={product.price ?? 0}
+                              data-stock={product.stock ?? ""}
+                              aria-label={`Beli ${product.title}`}
+                            >
+                              Beli
+                            </button>
+                          ) : product.url ? (
+                            <a
+                              href={product.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              data-track-item={product.id}
+                              class="btn-glow rounded-xl px-4 py-2 text-xs"
+                            >
+                              Beli di toko penjual<span class="sr-only"> (tab baru)</span>
+                            </a>
+                          ) : (
+                            <p class="text-xs text-slate-400">Pembelian belum tersedia</p>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </main>
+
+        <footer class="mx-auto max-w-md px-5 pb-10 text-center text-xs text-slate-400">
+          <a href="/" class="inline-flex min-h-11 items-center underline-offset-4 hover:text-slate-200 hover:underline">
+            Buat halaman seperti ini di smart-storefront
+          </a>
+        </footer>
+
+        {paymentsEnabled && (
+          <dialog
+            id="checkout"
+            aria-labelledby="checkout-title"
+            data-username={store.username}
+            data-snap-url={store.payments.enabled ? store.payments.snapJsUrl : ""}
+            data-client-key={store.payments.enabled ? store.payments.clientKey : ""}
+            class="m-auto w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto bg-transparent p-0 text-slate-200 backdrop:bg-black/70 backdrop:backdrop-blur-md"
+          >
+            <div class="dialog-panel glass-card rounded-3xl border-white/20 bg-night-raised/80 p-6">
+              <form id="checkout-form" data-view="form" novalidate>
+                <h2 id="checkout-title" class="pr-8 text-xl font-bold break-words" />
+                <p class="mt-1 text-sm text-slate-400">
+                  Harga satuan <span id="checkout-unit" class="tabular-nums text-emerald-300" />
+                </p>
+
+                <div class="mt-5 space-y-4">
+                  <div>
+                    <label for="buyer-name" class="label">Nama</label>
+                    <input id="buyer-name" name="buyerName" required maxlength="80" autocomplete="name" class="glass-input mt-1" />
+                  </div>
+                  <div>
+                    <label for="buyer-email" class="label">Email</label>
+                    <input
+                      id="buyer-email"
+                      name="buyerEmail"
+                      type="email"
+                      required
+                      autocomplete="email"
+                      class="glass-input mt-1"
+                    />
+                  </div>
+                  <fieldset>
+                    <legend class="label">Jumlah</legend>
+                    <div class="mt-1 flex items-center gap-2">
+                      <button type="button" id="qty-minus" aria-label="Kurangi jumlah" class="btn-ghost size-11 rounded-xl px-0 text-xl">
+                        <span aria-hidden="true">−</span>
+                      </button>
+                      <output id="qty" aria-live="polite" class="w-12 text-center text-lg font-semibold tabular-nums text-white">
+                        1
+                      </output>
+                      <button type="button" id="qty-plus" aria-label="Tambah jumlah" class="btn-ghost size-11 rounded-xl px-0 text-xl">
+                        <span aria-hidden="true">+</span>
+                      </button>
+                      <span id="qty-hint" class="ml-1 text-xs text-slate-400" />
+                    </div>
+                  </fieldset>
+                  <div>
+                    <label for="buyer-note" class="label">Catatan untuk penjual (opsional)</label>
+                    <textarea id="buyer-note" name="note" rows="2" maxlength="300" class="glass-input mt-1 py-2.5" />
+                  </div>
+                </div>
+
+                <p class="mt-5 flex items-baseline justify-between border-t border-white/10 pt-4">
+                  <span class="text-sm text-slate-300">Total</span>
+                  <span id="checkout-total" class="text-xl font-bold tabular-nums text-emerald-300" />
+                </p>
+
+                <p id="checkout-error" role="alert" class="mt-3 hidden rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200" />
+
+                <div class="mt-5 grid gap-2">
+                  <button type="submit" id="checkout-submit" class="btn-glow rounded-xl">
+                    Lanjut ke pembayaran
+                  </button>
+                  <button type="button" data-close class="btn-ghost border-transparent">
+                    Batal
+                  </button>
+                </div>
+                <p class="mt-3 text-center text-xs text-slate-400">Pembayaran diproses oleh Midtrans.</p>
+              </form>
+
+              <div data-view="result" hidden>
+                <h2 id="result-title" class="text-xl font-bold" tabindex="-1" />
+                <p id="result-body" class="mt-2 text-slate-300" />
+                <p id="result-code" class="mt-4 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm tabular-nums" />
+                <button type="button" id="result-close" class="btn-ghost mt-6 w-full">
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </dialog>
+        )}
+      </>
+    )
+  }
+</Base>
+
+<style>
+  /* Animasi masuk modal: satu-satunya gerakan di halaman, pendek, dan mati di prefers-reduced-motion. */
+  dialog[open] .dialog-panel {
+    animation: dialog-in 180ms ease-out;
+  }
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+  }
+</style>
+
+<script>
+  import { API_URL, errorMessage, formatRupiah } from "../lib/api";
+  import type { CheckoutResponse, OrderStatus } from "../types/store";
+
+  interface SnapCallbacks {
+    onSuccess?: () => void;
+    onPending?: () => void;
+    onError?: () => void;
+    onClose?: () => void;
+  }
+  type SnapWindow = Window & { snap?: { pay: (token: string, callbacks: SnapCallbacks) => void } };
+
+  const username = location.pathname.split("/").filter(Boolean)[0] ?? "";
+
+  // --- Analitik: kunjungan dan klik. Request tanpa body, jadi tidak perlu preflight CORS.
+  const track = (query: string) => {
+    const url = `${API_URL}/api/store/${encodeURIComponent(username)}/events?${query}`;
+    if (!navigator.sendBeacon?.(url)) void fetch(url, { method: "POST", keepalive: true, mode: "no-cors" });
+  };
+  track("type=view");
+  document.querySelectorAll<HTMLElement>("[data-track-item]").forEach((el) => {
+    el.addEventListener("click", () => track(`type=click&itemId=${el.dataset.trackItem}`));
+  });
+
+  // --- Checkout Midtrans Snap
+  const dialog = document.querySelector<HTMLDialogElement>("#checkout");
+
+  if (dialog) {
+    const $ = <T extends HTMLElement>(id: string) => dialog.querySelector<T>(`#${id}`)!;
+    const form = $<HTMLFormElement>("checkout-form");
+    const resultView = dialog.querySelector<HTMLElement>('[data-view="result"]')!;
+    const errorBox = $("checkout-error");
+    const submit = $<HTMLButtonElement>("checkout-submit");
+    const qtyEl = $<HTMLOutputElement>("qty");
+    const minus = $<HTMLButtonElement>("qty-minus");
+    const plus = $<HTMLButtonElement>("qty-plus");
+
+    let current = { id: "", title: "", price: 0, max: 99, qty: 1 };
+
+    const render = () => {
+      qtyEl.value = String(current.qty);
+      const total = formatRupiah(current.qty * current.price);
+      $("checkout-total").textContent = total;
+      submit.textContent = `Bayar ${total}`;
+      minus.disabled = current.qty <= 1;
+      plus.disabled = current.qty >= current.max;
+    };
+    const showError = (message: string | null) => {
+      errorBox.textContent = message ?? "";
+      errorBox.classList.toggle("hidden", !message);
+    };
+    const showView = (view: "form" | "result") => {
+      form.hidden = view !== "form";
+      resultView.hidden = view !== "result";
+    };
+
+    minus.addEventListener("click", () => {
+      current.qty = Math.max(1, current.qty - 1);
+      render();
+    });
+    plus.addEventListener("click", () => {
+      current.qty = Math.min(current.max, current.qty + 1);
+      render();
+    });
+    dialog.querySelector("[data-close]")!.addEventListener("click", () => dialog.close());
+    // Pesan validasi lama hilang begitu pembeli mulai memperbaiki isian.
+    form.addEventListener("input", () => showError(null));
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) dialog.close();
+    });
+
+    document.querySelectorAll<HTMLButtonElement>(".buy-button").forEach((button) => {
+      button.addEventListener("click", () => {
+        const { id = "", title = "", price = "0", stock = "" } = button.dataset;
+        track(`type=click&itemId=${id}`);
+        current = { id, title, price: Number(price), max: stock === "" ? 99 : Math.min(99, Number(stock)), qty: 1 };
+        $("checkout-title").textContent = title;
+        $("checkout-unit").textContent = formatRupiah(current.price);
+        $("qty-hint").textContent = stock === "" ? "" : `maks. ${current.max}`;
+        showError(null);
+        showView("form");
+        render();
+        dialog.showModal();
+        $<HTMLInputElement>("buyer-name").focus();
+      });
+    });
+
+    // snap.js dimuat hanya saat dibutuhkan, bukan di <head>, supaya halaman toko tetap ringan.
+    let snapLoader: Promise<void> | null = null;
+    const loadSnap = () =>
+      (snapLoader ??= new Promise<void>((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = dialog.dataset.snapUrl ?? "";
+        script.dataset.clientKey = dialog.dataset.clientKey ?? "";
+        script.onload = () => resolve();
+        script.onerror = () => {
+          snapLoader = null;
+          reject(new Error("snap.js gagal dimuat"));
+        };
+        document.head.append(script);
+      }));
+
+    const RESULT: Record<OrderStatus | "CLOSED", { title: string; body: string }> = {
+      PAID: { title: "Pembayaran berhasil", body: "Terima kasih. Penjual akan memproses pesananmu. Simpan kode pesanan di bawah." },
+      PENDING: {
+        title: "Menunggu pembayaran",
+        body: "Selesaikan pembayaran sesuai instruksi dari Midtrans. Status pesanan akan diperbarui otomatis.",
+      },
+      FAILED: { title: "Pembayaran gagal", body: "Transaksi dibatalkan atau kedaluwarsa. Kamu bisa mencoba lagi." },
+      CLOSED: { title: "Pembayaran belum selesai", body: "Jendela pembayaran ditutup sebelum selesai. Kamu bisa mencoba lagi." },
+    };
+    let lastStatus: OrderStatus | "CLOSED" = "CLOSED";
+
+    async function showResult(orderCode: string, closedByUser: boolean) {
+      showView("result");
+      $("result-title").textContent = "Memeriksa status pembayaran...";
+      $("result-body").textContent = "";
+      $("result-code").textContent = `Kode pesanan: ${orderCode}`;
+      if (!dialog!.open) dialog!.showModal();
+
+      let status: OrderStatus = "PENDING";
+      try {
+        const res = await fetch(`${API_URL}/api/checkout/${encodeURIComponent(orderCode)}/sync`, { method: "POST" });
+        if (res.ok) status = ((await res.json()) as { status: OrderStatus }).status;
+      } catch {
+        /* status tetap PENDING, akan diperbarui oleh webhook */
+      }
+      lastStatus = closedByUser && status === "PENDING" ? "CLOSED" : status;
+      $("result-title").textContent = RESULT[lastStatus].title;
+      $("result-body").textContent = RESULT[lastStatus].body;
+      $("result-title").focus();
+    }
+
+    $("result-close").addEventListener("click", () => {
+      dialog.close();
+      // Stok di halaman ini sudah berubah setelah pembayaran berhasil.
+      if (lastStatus === "PAID") location.reload();
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      showError(null);
+      if (!form.checkValidity()) {
+        const invalid = form.querySelector<HTMLInputElement>(":invalid");
+        const label = invalid ? form.querySelector(`label[for="${invalid.id}"]`)?.textContent : null;
+        showError(label ? `Periksa kolom "${label}". ${invalid?.validationMessage ?? ""}` : "Lengkapi form.");
+        invalid?.focus();
+        return;
+      }
+
+      const data = new FormData(form);
+      const label = submit.textContent;
+      submit.disabled = true;
+      submit.textContent = "Membuat transaksi...";
+      try {
+        const res = await fetch(`${API_URL}/api/checkout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            itemId: current.id,
+            quantity: current.qty,
+            buyerName: data.get("buyerName"),
+            buyerEmail: data.get("buyerEmail"),
+            note: data.get("note"),
+          }),
+        });
+        if (!res.ok) {
+          showError(await errorMessage(res, "Gagal membuat transaksi. Coba lagi."));
+          return;
+        }
+        const checkout = (await res.json()) as CheckoutResponse;
+
+        try {
+          await loadSnap();
+        } catch {
+          // Popup tidak tersedia: pindah ke halaman pembayaran Midtrans.
+          location.assign(checkout.redirectUrl);
+          return;
+        }
+        const snap = (window as SnapWindow).snap;
+        if (!snap) {
+          location.assign(checkout.redirectUrl);
+          return;
+        }
+
+        // <dialog> modal selalu di atas lapisan lain, jadi ditutup dulu agar popup Snap bisa dipakai.
+        dialog.close();
+        snap.pay(checkout.token, {
+          onSuccess: () => void showResult(checkout.orderCode, false),
+          onPending: () => void showResult(checkout.orderCode, false),
+          onError: () => void showResult(checkout.orderCode, false),
+          onClose: () => void showResult(checkout.orderCode, true),
+        });
+      } catch {
+        showError("Tidak bisa terhubung ke server. Coba lagi.");
+      } finally {
+        submit.disabled = false;
+        submit.textContent = label;
+      }
+    });
+  }
+</script>

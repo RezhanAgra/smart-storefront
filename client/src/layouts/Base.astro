@@ -1,0 +1,42 @@
+---
+// Font di-host sendiri (paket @fontsource dari Google Fonts) agar tidak ada stylesheet pihak ketiga yang memblokir render.
+import "@fontsource-variable/inter";
+import "@fontsource-variable/plus-jakarta-sans";
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description?: string;
+  ogImage?: string | null;
+  /** Halaman privat (login, dashboard) tidak perlu diindeks. */
+  noindex?: boolean;
+}
+
+const { title, description, ogImage, noindex = false } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site ?? Astro.url).href;
+---
+
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    {description && <meta name="description" content={description} />}
+    {noindex && <meta name="robots" content="noindex" />}
+    <link rel="canonical" href={canonical} />
+    <!-- Belum ada ikon resmi. Ikon kosong mencegah request favicon.ico yang 404. Ganti saat logo tersedia. -->
+    <link rel="icon" href="data:," />
+    <meta name="theme-color" content="#070913" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    {description && <meta property="og:description" content={description} />}
+    <meta property="og:url" content={canonical} />
+    {ogImage && <meta property="og:image" content={ogImage} />}
+    <meta name="twitter:card" content={ogImage ? "summary_large_image" : "summary"} />
+    <slot name="head" />
+  </head>
+  <body class="mesh-bg min-h-dvh">
+    <slot />
+  </body>
+</html>
