@@ -23,6 +23,11 @@ export interface DashboardItem extends StoreItem {
   updatedAt: string;
 }
 
+export interface SocialLink {
+  platform: string;
+  url: string;
+}
+
 export type StorePayments =
   | { enabled: true; clientKey: string; snapJsUrl: string }
   | { enabled: false };
@@ -34,6 +39,7 @@ export interface PublicStoreProfile {
   avatarUrl: string | null;
   themeColor: string;
   isVerified: boolean;
+  socialLinks: SocialLink[];
   items: StoreItem[];
   payments: StorePayments;
 }
@@ -47,8 +53,25 @@ export interface UserProfile {
   bio: string | null;
   avatarUrl: string | null;
   themeColor: string;
+  isVerified: boolean;
+  socialLinks: SocialLink[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** `GET /api/orders/status/:orderCode` (publik, untuk struk pembeli) */
+export interface OrderReceipt {
+  orderCode: string;
+  buyerName: string;
+  itemTitle: string;
+  unitPrice: number;
+  quantity: number;
+  totalAmount: number;
+  status: OrderStatus;
+  paymentType: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  store: { displayName: string; username: string };
 }
 
 /** `POST /api/checkout` */

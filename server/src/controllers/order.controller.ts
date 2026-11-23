@@ -27,3 +27,39 @@ export async function listOrders(req: Request, res: Response): Promise<void> {
   });
   res.json({ orders });
 }
+
+const ORDER_CODE = /^SS-[A-Z0-9-]{6,40}$/;
+
+/**
+ * GET /api/orders/status/:orderCode: publik, untuk halaman struk pembeli. Siapa pun yang tahu kode
+ * pesanan bisa membuka struk ini, jadi email, catatan, dan id internal tidak ikut dikirim.
+ */
+export async function getOrderStatus(req: Request, res: Response): Promise<void> {
+  const orderCode = String(req.params.orderCode ?? "");
+  const order = ORDER_CODE.test(orderCode)
+    ? await prisma.order.findUnique({
+        where: { orderCode },
+        select: {
+          orderCode: true,
+          buyerName: true,
+          itemTitle: true,
+          unitPrice: true,
+          quantity: true,
+          grossAmount: true,
+          status: true,
+          paymentType: true,
+          paidAt: true,
+          createdAt: true,
+          user: { select: { displayName: true, username: true } },
+        },
+      })
+    : null;
+
+  if (!order) {
+    res.status(404).json({ message: "Pesanan tidak ditemukan." });
+    return;
+  }
+
+  const { user, grossAmount, ...rest } = order;
+  res.json({ ...rest, totalAmount: grossAmount, store: user });
+}

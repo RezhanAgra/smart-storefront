@@ -14,6 +14,7 @@ export async function getStore(req: Request, res: Response): Promise<void> {
       avatarUrl: true,
       themeColor: true,
       isVerified: true,
+      socialLinks: true,
       items: {
         where: { isActive: true },
         orderBy: { orderIndex: "asc" },

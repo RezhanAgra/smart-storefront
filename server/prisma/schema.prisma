@@ -18,11 +18,18 @@ model User {
   themeColor   String           @default("#0f172a")
   /// Diisi manual oleh admin. Badge verifikasi di halaman toko hanya tampil jika true.
   isVerified   Boolean          @default(false)
+  socialLinks  SocialLink[]
   items        Item[]
   orders       Order[]
   events       AnalyticsEvent[]
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
+}
+
+/// Tautan media sosial di bawah bio halaman toko.
+type SocialLink {
+  platform String
+  url      String
 }
 
 model Item {

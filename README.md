@@ -62,7 +62,8 @@ cd client && npx astro check && npm run build && npm start
 | `DATABASE_URL` | `mongodb://localhost:27017/smart_storefront?replicaSet=rs0` |
 | `JWT_SECRET` | ganti dengan string acak panjang di production |
 | `CLIENT_URL` | `http://localhost:4321` (origin yang diizinkan CORS) |
-| `API_PUBLIC_URL` | `http://localhost:5000` (untuk URL gambar hasil upload) |
+| `SERVER_PUBLIC_URL` | `http://localhost:5000` (untuk URL gambar hasil upload; production: `https://api.domainmu.id`) |
+| `INTERNAL_API_KEY` | string acak panjang, harus sama dengan di `client/.env` (lihat "Keamanan") |
 | `MIDTRANS_SERVER_KEY` | kosong = checkout nonaktif |
 | `MIDTRANS_CLIENT_KEY` | kosong = checkout nonaktif |
 | `MIDTRANS_IS_PRODUCTION` | `false` untuk sandbox |
@@ -73,6 +74,7 @@ cd client && npx astro check && npm run build && npm start
 | --- | --- |
 | `PUBLIC_API_URL` | `http://localhost:5000` |
 | `SITE_URL` | `http://localhost:4321` (untuk canonical, `og:url`, dan alamat toko yang ditampilkan) |
+| `INTERNAL_API_KEY` | sama dengan di `server/.env`. Hanya dibaca saat SSR, tidak pernah masuk ke bundle browser |
 
 Gambar hasil upload disimpan di `server/uploads/` (tidak masuk git). Untuk production, pindahkan ke object storage.
 
@@ -86,7 +88,9 @@ Gambar hasil upload disimpan di `server/uploads/` (tidak masuk git). Untuk produ
 | GET | `/api/auth/me` | ya | Profil user yang login |
 | GET | `/api/items` | ya | Item milik user, urut `orderIndex` |
 | POST | `/api/items` | ya | `type` (`link`/`product`), `title`, `description`, `price`, `stock`, `url`, `imageUrl` |
-| PUT/DELETE | `/api/items/:id` | ya | Hanya item milik sendiri (selain itu 404) |
+| PUT/DELETE | `/api/items/:id` | ya | Hanya item milik sendiri (selain itu 404). `PUT` juga untuk `isActive` |
+| PATCH | `/api/items/reorder` | ya | Body `[{ id, orderIndex }]`, diterapkan dalam satu `prisma.$transaction` |
+| PUT | `/api/auth/profile` | ya | Divalidasi Zod: `displayName`, `bio` (maks. 250), `avatarUrl`, `themeColor` (hex), `socialLinks` (array atau JSON string `{ platform, url }`, maks. 8) |
 | POST | `/api/uploads` | ya | Multipart field `image`, JPG/PNG/WebP maks. 2 MB → `{ url }` |
 | GET | `/api/store/:username` | | Profil publik, item aktif, dan status pembayaran (`payments.enabled`, client key) |
 | POST | `/api/store/:username/events?type=view\|click&itemId=` | | Catat kunjungan atau klik (tanpa body) |
@@ -94,24 +98,49 @@ Gambar hasil upload disimpan di `server/uploads/` (tidak masuk git). Untuk produ
 | POST | `/api/checkout/:orderCode/sync` | | Tanya status ke Midtrans, kembalikan status saja |
 | POST | `/api/payments/midtrans/notification` | signature | Webhook Midtrans |
 | GET | `/api/orders?status=PAID\|PENDING\|FAILED` | ya | Pesanan milik penjual, terbaru dulu (maks. 200) |
+| GET | `/api/orders/status/:orderCode` | | Struk publik: tanpa email, catatan, atau id internal |
+| GET | `/api/health` | | Ping database. 200 `{ status: "ok", timestamp }` atau 503 |
 | GET | `/api/analytics?days=7\|14\|30` | ya | Total, seri harian (WIB), dan 5 item teratas |
 
 Auth diterima dari cookie `token` atau header `Authorization: Bearer <token>`.
 
-Username `login`, `logout`, `register`, `dashboard`, `api`, `admin`, `404`, dan `500` ditolak saat daftar karena bentrok dengan route client.
+Username `login`, `logout`, `register`, `dashboard`, `order`, `api`, `admin`, `404`, dan `500` ditolak saat daftar karena bentrok dengan route client.
+
+## Halaman client
+
+| Path | Isi |
+| --- | --- |
+| `/` | Landing |
+| `/login` | Masuk dan daftar |
+| `/<username>` | Halaman toko publik |
+| `/order/<orderCode>` | Struk dan status pembayaran pembeli (bisa dicetak/disimpan PDF) |
+| `/dashboard` | Analitik |
+| `/dashboard/items` | Tambah, edit, sembunyikan, urutkan, dan hapus produk/tautan |
+| `/dashboard/orders` | Riwayat transaksi |
+| `/dashboard/settings` | Foto profil, nama toko, bio, warna aksen, tautan sosial |
+
+## Keamanan
+
+- `helmet` aktif. `Cross-Origin-Resource-Policy: cross-origin` supaya gambar `/uploads` bisa dimuat client dari origin lain.
+- `trust proxy` = 1: API diasumsikan berada di belakang **satu** reverse proxy (Nginx/Caddy) yang mengisi `X-Forwarded-For`. Jika API diakses langsung tanpa proxy, set ke `false`, karena header itu bisa dipalsukan untuk mengelabui rate limit.
+- Rate limit per IP (memori proses, reset saat restart):
+  - `/api`: 100 request per 15 menit.
+  - `/api/auth/login` dan `/api/auth/register`: 10 percobaan per 15 menit.
+- Pengecualian rate limit:
+  - Webhook Midtrans (`/api/payments/*`), yang diverifikasi lewat signature.
+  - Request SSR dari server Astro yang membawa header `x-internal-key`. Tanpa pengecualian ini, semua pengunjung halaman toko terlihat sebagai satu IP (IP server Astro), dan batas 100 request habis dalam hitungan menit.
+- Jika API dijalankan lebih dari satu instance, pindahkan penyimpanan rate limit ke Redis (`rate-limit-redis`).
 
 ## Badge verifikasi
 
 Badge centang di halaman toko hanya tampil jika `User.isVerified` bernilai `true` (default `false`). Belum ada UI admin. Ubah langsung di database:
 
 ```bash
-docker exec smart-storefront-mongo mongosh smart_storefront --eval 'db.User.updateOne({username:"namatoko"},{$set:{isVerified:true}})'
+mongosh smart_storefront --eval 'db.User.updateOne({username:"namatoko"},{$set:{isVerified:true}})'
 ```
 
 ## Yang belum ada
 
-- Edit profil (bio, avatar, `themeColor`) dari UI. Kolomnya sudah dipakai halaman toko.
-- Edit dan urutkan ulang item dari dashboard (endpoint `PUT` sudah ada).
-- Rate limit untuk endpoint publik (`events`, `checkout`).
+- Mengosongkan harga atau stok produk lewat form edit (field kosong berarti "tidak diubah").
 - Email konfirmasi ke pembeli dari aplikasi ini.
 - Logo dan favicon resmi. Saat ini wordmark teks dan avatar inisial dipakai sebagai placeholder.

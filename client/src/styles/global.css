@@ -99,3 +99,44 @@
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Toast muncul dari bawah. Dimatikan oleh aturan prefers-reduced-motion di atas. */
+.toast-in {
+  animation: toast-in 200ms ease-out;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* Animasi masuk modal (checkout, edit item): pendek, dan dimatikan oleh prefers-reduced-motion. */
+dialog[open] .dialog-panel {
+  animation: dialog-in 180ms ease-out;
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* Cetak (struk pesanan): kertas putih, teks hitam, tanpa efek kaca. */
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+  * {
+    color: #000 !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+  .glass-card {
+    background: #fff !important;
+    border-color: #d4d4d8 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}

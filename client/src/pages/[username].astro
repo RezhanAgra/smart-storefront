@@ -1,14 +1,14 @@
 ---
 import Base from "../layouts/Base.astro";
 import type { PublicStoreProfile, StoreItem } from "../types/store";
-import { API_URL, formatRupiah } from "../lib/api";
+import { formatRupiah, ssrFetch } from "../lib/api";
 import { accentOnDark, readableTextOn, safeHex } from "../lib/color";
 
 const username = Astro.params.username ?? "";
 
 let store: PublicStoreProfile | null = null;
 try {
-  const res = await fetch(`${API_URL}/api/store/${encodeURIComponent(username)}`);
+  const res = await ssrFetch(`/api/store/${encodeURIComponent(username)}`);
   if (res.status === 404) return Astro.redirect("/404");
   if (res.ok) store = (await res.json()) as PublicStoreProfile;
 } catch {
@@ -100,6 +100,25 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
             <p class="mx-auto mt-4 max-w-sm whitespace-pre-line text-pretty leading-relaxed text-slate-300 break-words">
               {store.bio}
             </p>
+          )}
+          {store.socialLinks.length > 0 && (
+            <nav aria-label="Media sosial" class="mt-5">
+              <ul class="flex flex-wrap justify-center gap-2">
+                {store.socialLinks.map((link) => (
+                  <li>
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer me"
+                      class="inline-flex min-h-11 items-center rounded-full border border-white/10 bg-white/5 px-4 text-sm font-medium text-slate-200 transition-colors hover:border-white/25 hover:bg-white/10 hover:text-white"
+                    >
+                      {link.platform}
+                      <span class="sr-only"> (tab baru)</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
           )}
         </header>
 
@@ -312,7 +331,8 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
                 <h2 id="result-title" class="text-xl font-bold" tabindex="-1" />
                 <p id="result-body" class="mt-2 text-slate-300" />
                 <p id="result-code" class="mt-4 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm tabular-nums" />
-                <button type="button" id="result-close" class="btn-ghost mt-6 w-full">
+                <a id="result-link" class="btn-ghost mt-6 w-full">Lihat status pesanan</a>
+                <button type="button" id="result-close" class="btn-ghost mt-2 w-full border-transparent">
                   Tutup
                 </button>
               </div>
@@ -324,18 +344,6 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
   }
 </Base>
 
-<style>
-  /* Animasi masuk modal: satu-satunya gerakan di halaman, pendek, dan mati di prefers-reduced-motion. */
-  dialog[open] .dialog-panel {
-    animation: dialog-in 180ms ease-out;
-  }
-  @keyframes dialog-in {
-    from {
-      opacity: 0;
-      transform: scale(0.95);
-    }
-  }
-</style>
 
 <script>
   import { API_URL, errorMessage, formatRupiah } from "../lib/api";
@@ -455,6 +463,7 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
       $("result-title").textContent = "Memeriksa status pembayaran...";
       $("result-body").textContent = "";
       $("result-code").textContent = `Kode pesanan: ${orderCode}`;
+      $<HTMLAnchorElement>("result-link").href = `/order/${encodeURIComponent(orderCode)}`;
       if (!dialog!.open) dialog!.showModal();
 
       let status: OrderStatus = "PENDING";
@@ -525,8 +534,9 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
         // <dialog> modal selalu di atas lapisan lain, jadi ditutup dulu agar popup Snap bisa dipakai.
         dialog.close();
         snap.pay(checkout.token, {
-          onSuccess: () => void showResult(checkout.orderCode, false),
-          onPending: () => void showResult(checkout.orderCode, false),
+          // Berhasil atau menunggu pembayaran: buka struk digital yang bisa disimpan dan dibuka ulang.
+          onSuccess: () => location.assign(`/order/${encodeURIComponent(checkout.orderCode)}`),
+          onPending: () => location.assign(`/order/${encodeURIComponent(checkout.orderCode)}`),
           onError: () => void showResult(checkout.orderCode, false),
           onClose: () => void showResult(checkout.orderCode, true),
         });

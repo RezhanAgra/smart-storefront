@@ -1,9 +1,11 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import helmet from "helmet";
 import { env, paymentsEnabled } from "./lib/env.js";
 import { prisma } from "./lib/prisma.js";
 import { ValidationError } from "./lib/validation.js";
+import { apiLimiter, authLimiter } from "./middlewares/rate-limit.middleware.js";
 import authRoutes from "./routes/auth.routes.js";
 import itemRoutes from "./routes/item.routes.js";
 import storeRoutes from "./routes/store.routes.js";
@@ -14,6 +16,10 @@ import { checkoutRouter, paymentRouter } from "./routes/checkout.routes.js";
 
 const app = express();
 
+// Satu reverse proxy (Nginx/Caddy) di depan API: req.ip diambil dari X-Forwarded-For milik proxy itu.
+app.set("trust proxy", 1);
+// cross-origin: gambar /uploads dimuat oleh client Astro yang berbeda origin.
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use(cors({ origin: env.clientUrl, credentials: true }));
 app.use(express.json({ limit: "100kb" }));
 app.use(cookieParser());
@@ -28,8 +34,19 @@ app.use(
   }),
 );
 
-app.get("/api/health", (_req: Request, res: Response) => {
-  res.json({ status: "ok", payments: paymentsEnabled() });
+app.use("/api", apiLimiter);
+app.use(["/api/auth/login", "/api/auth/register"], authLimiter);
+
+/** Dipakai monitoring/uptime check: 200 jika database bisa di-ping, 503 jika tidak. */
+app.get("/api/health", async (_req: Request, res: Response) => {
+  const timestamp = new Date().toISOString();
+  try {
+    await prisma.$runCommandRaw({ ping: 1 });
+    res.json({ status: "ok", timestamp, payments: paymentsEnabled() });
+  } catch (err) {
+    console.error("Health check: database tidak terjangkau", err);
+    res.status(503).json({ status: "error", timestamp, message: "Database tidak terjangkau." });
+  }
 });
 
 app.use("/api/auth", authRoutes);

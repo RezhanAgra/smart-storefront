@@ -24,3 +24,26 @@ export function showState(root: ParentNode, state: string): void {
 
 const dateTime = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" });
 export const formatDateTime = (iso: string) => dateTime.format(new Date(iso));
+
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+export const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+
+/** Validasi lalu unggah gambar ke `POST /api/uploads`. Melempar Error berisi pesan untuk user. */
+export async function uploadImage(file: File): Promise<string> {
+  if (!IMAGE_TYPES.includes(file.type)) throw new Error("Format gambar harus JPG, PNG, atau WebP.");
+  if (file.size > MAX_IMAGE_BYTES) throw new Error("Ukuran gambar maksimal 2 MB.");
+  const body = new FormData();
+  body.append("image", file);
+  let res: Response;
+  try {
+    res = await api("/uploads", { method: "POST", body });
+  } catch {
+    throw new Error("Tidak bisa terhubung ke server.");
+  }
+  if (redirectIfUnauthorized(res)) throw new Error("Sesi berakhir.");
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(data?.message ?? "Gagal mengunggah gambar.");
+  }
+  return ((await res.json()) as { url: string }).url;
+}

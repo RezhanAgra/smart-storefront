@@ -110,24 +110,104 @@ const radioClass =
           <ul data-state="ready" hidden id="item-list" class="space-y-3"></ul>
         </div>
 
+        <p id="reorder-status" class="sr-only" aria-live="polite"></p>
+
         <template id="item-template">
-          <li class="glass-card flex items-start gap-4 rounded-2xl p-4">
-            <div data-field="thumb" class="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/5 text-slate-400"></div>
-            <div class="min-w-0 flex-1">
-              <p class="text-xs font-medium text-slate-400" data-field="type"></p>
-              <p class="font-semibold text-white break-words" data-field="title"></p>
-              <p class="mt-0.5 text-sm" data-field="meta"></p>
-              <p class="mt-0.5 text-xs text-slate-400 break-all" data-field="url"></p>
+          <li class="glass-card rounded-2xl p-4 transition-opacity data-[inactive]:opacity-70">
+            <div class="flex items-start gap-4">
+              <div data-field="thumb" class="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/5 text-slate-400"></div>
+              <div class="min-w-0 flex-1">
+                <p class="text-xs font-medium text-slate-400" data-field="type"></p>
+                <p class="font-semibold text-white break-words" data-field="title"></p>
+                <p class="mt-0.5 text-sm" data-field="meta"></p>
+                <p class="mt-0.5 text-xs text-slate-400 break-all" data-field="url"></p>
+              </div>
+              <div class="flex shrink-0 flex-col gap-1">
+                <button type="button" data-action="up" class="btn-ghost size-11 px-0">
+                  <svg viewBox="0 0 20 20" fill="currentColor" class="size-5" aria-hidden="true"><path d="M10 5.5 15 11H5z" /></svg>
+                </button>
+                <button type="button" data-action="down" class="btn-ghost size-11 px-0">
+                  <svg viewBox="0 0 20 20" fill="currentColor" class="size-5" aria-hidden="true"><path d="M10 14.5 5 9h10z" /></svg>
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              data-action="delete"
-              class="min-h-11 shrink-0 rounded-xl border border-rose-400/30 px-3 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/10 active:translate-y-px disabled:opacity-50"
-            >
-              Hapus
-            </button>
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
+              <button type="button" role="switch" data-action="toggle" class="group flex min-h-11 items-center gap-3 rounded-xl pr-2 text-sm text-slate-200 disabled:opacity-50">
+                <span class="relative h-6 w-11 shrink-0 rounded-full border border-white/15 bg-white/10 transition-colors group-aria-checked:border-emerald-300/40 group-aria-checked:bg-emerald-500/60">
+                  <span class="absolute left-0.5 top-0.5 size-[18px] rounded-full bg-white shadow transition-transform group-aria-checked:translate-x-5"></span>
+                </span>
+                <span data-field="toggle-label"></span>
+              </button>
+              <div class="flex gap-2">
+                <button type="button" data-action="edit" class="btn-ghost text-sm">Edit</button>
+                <button
+                  type="button"
+                  data-action="delete"
+                  class="min-h-11 rounded-xl border border-rose-400/30 px-3 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/10 active:translate-y-px disabled:opacity-50"
+                >
+                  Hapus
+                </button>
+              </div>
+            </div>
           </li>
         </template>
+
+        <dialog
+          id="edit-dialog"
+          aria-labelledby="edit-title"
+          class="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto bg-transparent p-0 text-slate-200 backdrop:bg-black/70 backdrop:backdrop-blur-md"
+        >
+          <form id="edit-form" class="dialog-panel glass-card rounded-3xl border-white/20 bg-night-raised/80 p-6" novalidate>
+            <h2 id="edit-title" class="text-xl font-bold">Edit item</h2>
+            <p id="edit-type" class="mt-1 text-sm text-slate-400"></p>
+
+            <div class="mt-5 space-y-4">
+              <div>
+                <label for="e-title" class="label">Judul</label>
+                <input id="e-title" name="title" required maxlength="120" class="glass-input mt-1" />
+              </div>
+              <div>
+                <label for="e-url" class="label" id="e-url-label">URL</label>
+                <input id="e-url" name="url" type="url" inputmode="url" placeholder="https://" class="glass-input mt-1" />
+              </div>
+              <div>
+                <label for="e-description" class="label">Deskripsi (opsional)</label>
+                <textarea id="e-description" name="description" rows="2" maxlength="500" class="glass-input mt-1 py-2.5"></textarea>
+              </div>
+              <div id="e-product-fields" class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label for="e-price" class="label">Harga (Rp)</label>
+                    <input id="e-price" name="price" type="number" min="0" step="1" inputmode="numeric" class="glass-input mt-1" />
+                  </div>
+                  <div>
+                    <label for="e-stock" class="label">Stok</label>
+                    <input id="e-stock" name="stock" type="number" min="0" step="1" inputmode="numeric" class="glass-input mt-1" />
+                  </div>
+                </div>
+                <div>
+                  <span class="label">Gambar produk</span>
+                  <div class="mt-2 flex flex-wrap items-center gap-3">
+                    <img id="e-image-preview" alt="Gambar produk saat ini" width="64" height="64" class="size-16 rounded-xl border border-white/10 object-cover" hidden />
+                    <label for="e-image-file" class="btn-ghost text-sm has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-indigo-300">
+                      <span id="e-image-label">Unggah gambar</span>
+                      <input id="e-image-file" type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" />
+                    </label>
+                    <button type="button" id="e-image-remove" class="btn-ghost text-sm" hidden>Hapus gambar</button>
+                  </div>
+                  <input type="hidden" name="imageUrl" id="e-image-url" />
+                </div>
+              </div>
+            </div>
+
+            <p id="edit-error" role="alert" class="mt-4 hidden rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200"></p>
+
+            <div class="mt-6 grid gap-2 sm:grid-cols-2">
+              <button type="submit" id="edit-save" class="btn-glow rounded-xl sm:order-2">Simpan perubahan</button>
+              <button type="button" id="edit-cancel" class="btn-ghost sm:order-1">Batal</button>
+            </div>
+          </form>
+        </dialog>
       </section>
     </div>
   </main>
@@ -135,7 +215,8 @@ const radioClass =
 
 <script>
   import { errorMessage, formatRupiah } from "../../lib/api";
-  import { api, redirectIfUnauthorized, showState } from "../../lib/client";
+  import { api, redirectIfUnauthorized, showState, uploadImage } from "../../lib/client";
+  import { toast } from "../../lib/toast";
   import type { DashboardItem, ItemType } from "../../types/store";
 
   const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
@@ -155,27 +236,38 @@ const radioClass =
   const LINK_ICON =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-6" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" stroke-linecap="round"/></svg>';
 
-  function renderItems(items: DashboardItem[]) {
+  /** Sumber kebenaran daftar di browser; selalu urut sesuai tampilan. */
+  let items: DashboardItem[] = [];
+  let reordering = false;
+  const reorderStatus = $<HTMLElement>("#reorder-status");
+
+  function fillThumb(thumb: HTMLElement, item: DashboardItem) {
+    thumb.replaceChildren();
+    if (item.imageUrl) {
+      const img = document.createElement("img");
+      img.src = item.imageUrl;
+      img.alt = "";
+      img.width = 64;
+      img.height = 64;
+      img.loading = "lazy";
+      img.className = "size-full object-cover";
+      thumb.append(img);
+    } else {
+      thumb.innerHTML = item.type === "link" ? LINK_ICON : PACKAGE_ICON;
+    }
+  }
+
+  function renderItems(focus?: { id: string; action: string }) {
     list.replaceChildren(
-      ...items.map((item) => {
+      ...items.map((item, index) => {
         const node = template.content.firstElementChild!.cloneNode(true) as HTMLLIElement;
         const field = (name: string) => node.querySelector<HTMLElement>(`[data-field="${name}"]`)!;
+        const action = (name: string) => node.querySelector<HTMLButtonElement>(`[data-action="${name}"]`)!;
+        node.dataset.id = item.id;
+        if (!item.isActive) node.dataset.inactive = "";
 
-        const thumb = field("thumb");
-        if (item.imageUrl) {
-          const img = document.createElement("img");
-          img.src = item.imageUrl;
-          img.alt = "";
-          img.width = 64;
-          img.height = 64;
-          img.loading = "lazy";
-          img.className = "size-full object-cover";
-          thumb.append(img);
-        } else {
-          thumb.innerHTML = item.type === "link" ? LINK_ICON : PACKAGE_ICON;
-        }
-
-        field("type").textContent = (item.type === "link" ? "Tautan" : "Produk") + (item.isActive ? "" : " · disembunyikan");
+        fillThumb(field("thumb"), item);
+        field("type").textContent = item.type === "link" ? "Tautan" : "Produk";
         field("title").textContent = item.title;
 
         const meta = field("meta");
@@ -193,13 +285,42 @@ const radioClass =
         }
         field("url").textContent = item.url ?? "";
 
-        const del = node.querySelector<HTMLButtonElement>('[data-action="delete"]')!;
+        // Sakelar tampil/sembunyi: status ditulis sebagai teks, bukan hanya warna.
+        const toggle = action("toggle");
+        toggle.setAttribute("aria-checked", String(item.isActive));
+        toggle.setAttribute("aria-label", `Tampilkan ${item.title} di toko`);
+        field("toggle-label").textContent = item.isActive ? "Tampil di toko" : "Disembunyikan";
+        toggle.addEventListener("click", () => void toggleActive(item, toggle));
+
+        const up = action("up");
+        const down = action("down");
+        up.setAttribute("aria-label", `Naikkan ${item.title}`);
+        down.setAttribute("aria-label", `Turunkan ${item.title}`);
+        up.disabled = index === 0 || reordering;
+        down.disabled = index === items.length - 1 || reordering;
+        up.addEventListener("click", () => void move(index, -1));
+        down.addEventListener("click", () => void move(index, 1));
+
+        const edit = action("edit");
+        edit.setAttribute("aria-label", `Edit ${item.title}`);
+        edit.addEventListener("click", () => openEdit(item, edit));
+
+        const del = action("delete");
         del.setAttribute("aria-label", `Hapus ${item.title}`);
         del.addEventListener("click", () => void deleteItem(item, del));
         return node;
       }),
     );
     showState(root, items.length ? "ready" : "empty");
+
+    if (focus) {
+      const target = list.querySelector<HTMLButtonElement>(`[data-id="${focus.id}"] [data-action="${focus.action}"]`);
+      // Di posisi paling atas/bawah tombol yang ditekan jadi disabled, jadi fokus pindah ke tombol arah sebaliknya.
+      const fallback = list.querySelector<HTMLButtonElement>(
+        `[data-id="${focus.id}"] [data-action="${focus.action === "up" ? "down" : "up"}"]`,
+      );
+      (target && !target.disabled ? target : fallback)?.focus();
+    }
   }
 
   async function loadItems() {
@@ -208,10 +329,57 @@ const radioClass =
       const res = await api("/items");
       if (redirectIfUnauthorized(res)) return;
       if (!res.ok) throw new Error(await errorMessage(res, "Item tidak bisa dimuat."));
-      renderItems(((await res.json()) as { items: DashboardItem[] }).items);
+      items = ((await res.json()) as { items: DashboardItem[] }).items;
+      renderItems();
     } catch (err) {
       $("#list-error-text").textContent = err instanceof TypeError ? "Tidak bisa terhubung ke server." : (err as Error).message;
       showState(root, "error");
+    }
+  }
+
+  /** Pindahkan item satu posisi. Tampilan langsung berubah, lalu urutan lengkap dikirim ke server. */
+  async function move(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (reordering || target < 0 || target >= items.length) return;
+    const previous = items;
+    const next = [...items];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    const moved = next[target]!;
+
+    items = next;
+    reordering = true;
+    renderItems({ id: moved.id, action: direction === -1 ? "up" : "down" });
+    try {
+      const res = await api("/items/reorder", {
+        method: "PATCH",
+        body: JSON.stringify(items.map((item, i) => ({ id: item.id, orderIndex: i }))),
+      });
+      if (redirectIfUnauthorized(res)) return;
+      if (!res.ok) throw new Error(await errorMessage(res, "Urutan gagal disimpan."));
+      reorderStatus.textContent = `${moved.title} sekarang di posisi ${target + 1} dari ${items.length}.`;
+    } catch (err) {
+      items = previous;
+      toast(err instanceof TypeError ? "Tidak bisa terhubung ke server." : (err as Error).message, "error");
+    } finally {
+      reordering = false;
+      renderItems({ id: moved.id, action: direction === -1 ? "up" : "down" });
+    }
+  }
+
+  async function toggleActive(item: DashboardItem, button: HTMLButtonElement) {
+    const isActive = !item.isActive;
+    button.disabled = true;
+    try {
+      const res = await api(`/items/${item.id}`, { method: "PUT", body: JSON.stringify({ isActive }) });
+      if (redirectIfUnauthorized(res)) return;
+      if (!res.ok) throw new Error(await errorMessage(res, "Gagal mengubah status."));
+      const { item: updated } = (await res.json()) as { item: DashboardItem };
+      items = items.map((it) => (it.id === updated.id ? updated : it));
+      renderItems({ id: updated.id, action: "toggle" });
+      toast(isActive ? `"${updated.title}" tampil di toko.` : `"${updated.title}" disembunyikan dari toko.`);
+    } catch (err) {
+      button.disabled = false;
+      toast(err instanceof TypeError ? "Tidak bisa terhubung ke server." : (err as Error).message, "error");
     }
   }
 
@@ -223,13 +391,139 @@ const radioClass =
       const res = await api(`/items/${item.id}`, { method: "DELETE" });
       if (redirectIfUnauthorized(res)) return;
       if (!res.ok && res.status !== 404) throw new Error(await errorMessage(res, "Gagal menghapus."));
-      await loadItems();
+      items = items.filter((it) => it.id !== item.id);
+      renderItems();
+      toast(`"${item.title}" dihapus.`);
     } catch (err) {
       button.disabled = false;
       button.textContent = "Hapus";
-      alert(err instanceof Error ? err.message : "Gagal menghapus.");
+      toast(err instanceof Error ? err.message : "Gagal menghapus.", "error");
     }
   }
+
+  // --- Modal edit
+  const editDialog = $<HTMLDialogElement>("#edit-dialog");
+  const editForm = $<HTMLFormElement>("#edit-form");
+  const editError = $<HTMLElement>("#edit-error");
+  const editSave = $<HTMLButtonElement>("#edit-save");
+  const eImageUrl = $<HTMLInputElement>("#e-image-url");
+  const eImagePreview = $<HTMLImageElement>("#e-image-preview");
+  const eImageRemove = $<HTMLButtonElement>("#e-image-remove");
+  const eImageLabel = $<HTMLElement>("#e-image-label");
+  const eImageFile = $<HTMLInputElement>("#e-image-file");
+  let editing: { item: DashboardItem; opener: HTMLElement } | null = null;
+
+  const field = <T extends HTMLInputElement | HTMLTextAreaElement>(id: string) => $<T>(`#${id}`);
+
+  function showEditImage(url: string) {
+    eImageUrl.value = url;
+    eImagePreview.hidden = !url;
+    eImageRemove.hidden = !url;
+    eImageLabel.textContent = url ? "Ganti gambar" : "Unggah gambar";
+    if (url) eImagePreview.src = url;
+  }
+  const showEditError = (message: string | null) => {
+    editError.textContent = message ?? "";
+    editError.classList.toggle("hidden", !message);
+  };
+
+  function openEdit(item: DashboardItem, opener: HTMLElement) {
+    editing = { item, opener };
+    const isLink = item.type === "link";
+    $("#edit-type").textContent = isLink ? "Tautan" : "Produk";
+    field("e-title").value = item.title;
+    field("e-description").value = item.description ?? "";
+    field("e-url").value = item.url ?? "";
+    field<HTMLInputElement>("e-url").required = isLink;
+    $("#e-url-label").textContent = isLink ? "URL tujuan" : "Link pembelian di luar (opsional)";
+    field("e-price").value = item.price?.toString() ?? "";
+    field("e-stock").value = item.stock?.toString() ?? "";
+    $<HTMLElement>("#e-product-fields").hidden = isLink;
+    showEditImage(item.imageUrl ?? "");
+    showEditError(null);
+    editDialog.showModal();
+    field("e-title").focus();
+  }
+
+  /** Fokus kembali ke tombol Edit item itu (dicari ulang, karena kartu bisa sudah dirender ulang). */
+  function restoreEditFocus() {
+    if (!editing) return;
+    const again = list.querySelector<HTMLButtonElement>(`[data-id="${editing.item.id}"] [data-action="edit"]`);
+    (again ?? editing.opener).focus();
+    editing = null;
+  }
+  function closeEdit() {
+    editDialog.close();
+    restoreEditFocus();
+  }
+  // Escape menutup dialog secara native: event close menangani fokusnya.
+  editDialog.addEventListener("close", restoreEditFocus);
+  $("#edit-cancel").addEventListener("click", closeEdit);
+  editDialog.addEventListener("click", (e) => {
+    if (e.target === editDialog) closeEdit();
+  });
+  editForm.addEventListener("input", () => showEditError(null));
+
+  eImageFile.addEventListener("change", async () => {
+    const file = eImageFile.files?.[0];
+    if (!file) return;
+    editSave.disabled = true;
+    eImageLabel.textContent = "Mengunggah...";
+    try {
+      showEditImage(await uploadImage(file));
+    } catch (err) {
+      showEditImage(eImageUrl.value);
+      showEditError((err as Error).message);
+    } finally {
+      eImageFile.value = "";
+      editSave.disabled = false;
+    }
+  });
+  eImageRemove.addEventListener("click", () => showEditImage(""));
+
+  editForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!editing) return;
+    if (!editForm.checkValidity()) {
+      const invalid = editForm.querySelector<HTMLInputElement>(":invalid");
+      const label = invalid ? editForm.querySelector(`label[for="${invalid.id}"]`)?.textContent?.trim() : null;
+      showEditError(label ? `Periksa "${label}". ${invalid?.validationMessage ?? ""}` : "Periksa isian form.");
+      invalid?.focus();
+      return;
+    }
+
+    const { item } = editing;
+    const value = (id: string) => field(id).value.trim();
+    const number = (id: string) => (value(id) === "" ? undefined : Number(value(id)));
+    // String kosong dikirim apa adanya: server menyimpannya sebagai null (menghapus isian lama).
+    const payload = {
+      title: value("e-title"),
+      description: value("e-description"),
+      url: value("e-url"),
+      ...(item.type === "product" && { price: number("e-price"), stock: number("e-stock"), imageUrl: eImageUrl.value }),
+    };
+
+    editSave.disabled = true;
+    editSave.textContent = "Menyimpan...";
+    try {
+      const res = await api(`/items/${item.id}`, { method: "PUT", body: JSON.stringify(payload) });
+      if (redirectIfUnauthorized(res)) return;
+      if (!res.ok) {
+        showEditError(await errorMessage(res, "Gagal menyimpan perubahan."));
+        return;
+      }
+      const { item: updated } = (await res.json()) as { item: DashboardItem };
+      items = items.map((it) => (it.id === updated.id ? updated : it));
+      renderItems();
+      closeEdit();
+      toast(`"${updated.title}" diperbarui.`);
+    } catch {
+      showEditError("Tidak bisa terhubung ke server.");
+    } finally {
+      editSave.disabled = false;
+      editSave.textContent = "Simpan perubahan";
+    }
+  });
 
   // --- Form
   function showStatus(message: string, tone: "ok" | "error") {
@@ -268,15 +562,7 @@ const radioClass =
     dropText.innerHTML = '<span class="font-semibold text-white">Pilih gambar</span> atau seret ke sini';
   }
 
-  async function uploadImage(file: File) {
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      showStatus("Format gambar harus JPG, PNG, atau WebP.", "error");
-      return;
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      showStatus("Ukuran gambar maksimal 2 MB.", "error");
-      return;
-    }
+  async function uploadCreateImage(file: File) {
     status.classList.add("hidden");
     uploading = true;
     submitButton.disabled = true;
@@ -284,17 +570,12 @@ const radioClass =
     preview.hidden = false;
     dropText.textContent = "Mengunggah...";
     try {
-      const body = new FormData();
-      body.append("image", file);
-      const res = await api("/uploads", { method: "POST", body });
-      if (redirectIfUnauthorized(res)) return;
-      if (!res.ok) throw new Error(await errorMessage(res, "Gagal mengunggah gambar."));
-      imageUrl.value = ((await res.json()) as { url: string }).url;
+      imageUrl.value = await uploadImage(file);
       dropText.textContent = `${file.name} terunggah. Klik untuk mengganti.`;
       removeImage.hidden = false;
     } catch (err) {
       resetImage();
-      showStatus(err instanceof TypeError ? "Tidak bisa terhubung ke server." : (err as Error).message, "error");
+      showStatus((err as Error).message, "error");
     } finally {
       uploading = false;
       submitButton.disabled = false;
@@ -303,7 +584,7 @@ const radioClass =
 
   fileInput.addEventListener("change", () => {
     const file = fileInput.files?.[0];
-    if (file) void uploadImage(file);
+    if (file) void uploadCreateImage(file);
   });
   dropzone.addEventListener("dragover", (e) => {
     e.preventDefault();
@@ -314,7 +595,7 @@ const radioClass =
     e.preventDefault();
     delete dropzone.dataset.drag;
     const file = e.dataTransfer?.files[0];
-    if (file) void uploadImage(file);
+    if (file) void uploadCreateImage(file);
   });
   removeImage.addEventListener("click", resetImage);
 

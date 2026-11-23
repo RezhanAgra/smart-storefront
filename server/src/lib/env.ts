@@ -15,7 +15,10 @@ export const env = {
   port,
   jwtSecret: required("JWT_SECRET"),
   clientUrl: required("CLIENT_URL"),
-  apiPublicUrl: (process.env.API_PUBLIC_URL ?? `http://localhost:${port}`).replace(/\/$/, ""),
+  /** URL publik server ini, untuk menyusun URL gambar hasil upload (dev: localhost, prod: domain API). */
+  serverPublicUrl: (process.env.SERVER_PUBLIC_URL || "http://localhost:5000").replace(/\/$/, ""),
+  /** Rahasia bersama dengan server Astro (SSR) agar request SSR tidak terkena rate limit per IP. */
+  internalApiKey: process.env.INTERNAL_API_KEY ?? "",
   isProduction: process.env.NODE_ENV === "production",
   midtrans: {
     serverKey: process.env.MIDTRANS_SERVER_KEY ?? "",

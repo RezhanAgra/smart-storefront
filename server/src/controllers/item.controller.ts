@@ -10,6 +10,7 @@ import {
   ValidationError,
   type Body,
 } from "../lib/validation.js";
+import { firstIssue, reorderSchema } from "../lib/schemas.js";
 
 const ITEM_TYPES = ["link", "product"] as const;
 type ItemType = (typeof ITEM_TYPES)[number];
@@ -108,4 +109,28 @@ export async function deleteItem(req: Request, res: Response): Promise<void> {
 
   await prisma.item.delete({ where: { id: existing.id } });
   res.status(204).end();
+}
+
+/**
+ * PATCH /api/items/reorder: body [{ id, orderIndex }]. Semua item harus milik user yang login,
+ * dan semua update dijalankan dalam satu transaksi (semua berhasil atau tidak sama sekali).
+ */
+export async function reorderItems(req: Request, res: Response): Promise<void> {
+  const userId = req.userId!;
+  const parsed = reorderSchema.safeParse(req.body);
+  if (!parsed.success) throw new ValidationError(firstIssue(parsed.error));
+
+  const ids = parsed.data.map((i) => i.id);
+  const owned = await prisma.item.count({ where: { id: { in: ids }, userId } });
+  if (owned !== ids.length) {
+    res.status(404).json({ message: "Sebagian item tidak ditemukan." });
+    return;
+  }
+
+  await prisma.$transaction(
+    parsed.data.map(({ id, orderIndex }) => prisma.item.update({ where: { id }, data: { orderIndex } })),
+  );
+
+  const items = await prisma.item.findMany({ where: { userId }, orderBy: { orderIndex: "asc" } });
+  res.json({ items });
 }

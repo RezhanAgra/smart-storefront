@@ -5,11 +5,12 @@ import { prisma } from "../lib/prisma.js";
 import { env } from "../lib/env.js";
 import { TOKEN_COOKIE, TOKEN_TTL_SECONDS, signToken } from "../middlewares/auth.middleware.js";
 import { asBody, ValidationError } from "../lib/validation.js";
+import { firstIssue, updateProfileSchema } from "../lib/schemas.js";
 
 const USERNAME = /^[a-z0-9]{3,30}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Nama yang bentrok dengan route statis di client Astro (/login, /dashboard, /404, dst).
-const RESERVED_USERNAMES = new Set(["login", "logout", "register", "dashboard", "api", "admin", "404", "500"]);
+const RESERVED_USERNAMES = new Set(["login", "logout", "register", "dashboard", "order", "api", "admin", "404", "500"]);
 
 /** Field user yang aman dikirim ke client (tanpa passwordHash). */
 export const publicUserSelect = {
@@ -20,6 +21,8 @@ export const publicUserSelect = {
   bio: true,
   avatarUrl: true,
   themeColor: true,
+  isVerified: true,
+  socialLinks: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.UserSelect;
@@ -105,5 +108,18 @@ export async function me(req: Request, res: Response): Promise<void> {
     res.status(401).json({ message: "Akun tidak ditemukan." });
     return;
   }
+  res.json({ user });
+}
+
+/** PUT /api/auth/profile: ubah profil toko milik user yang login. Field yang tidak dikirim tidak diubah. */
+export async function updateProfile(req: Request, res: Response): Promise<void> {
+  const parsed = updateProfileSchema.safeParse(req.body);
+  if (!parsed.success) throw new ValidationError(firstIssue(parsed.error));
+
+  const user = await prisma.user.update({
+    where: { id: req.userId },
+    data: parsed.data,
+    select: publicUserSelect,
+  });
   res.json({ user });
 }

@@ -1,0 +1,192 @@
+---
+import Base from "../../layouts/Base.astro";
+import SiteHeader from "../../components/SiteHeader.astro";
+import SiteFooter from "../../components/SiteFooter.astro";
+import { formatRupiah, ssrFetch } from "../../lib/api";
+import type { OrderReceipt, OrderStatus } from "../../types/store";
+
+const orderCode = Astro.params.orderCode ?? "";
+
+let order: OrderReceipt | null = null;
+let failed = false;
+try {
+  const res = await ssrFetch(`/api/orders/status/${encodeURIComponent(orderCode)}`);
+  if (res.ok) order = (await res.json()) as OrderReceipt;
+  else if (res.status === 404) Astro.response.status = 404;
+  else failed = true;
+} catch {
+  failed = true;
+}
+if (failed) Astro.response.status = 502;
+
+const dateTime = new Intl.DateTimeFormat("id-ID", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Jakarta" });
+const formatDate = (iso: string | null) => (iso ? `${dateTime.format(new Date(iso))} WIB` : "-");
+
+const STATUS: Record<OrderStatus, { title: string; body: string; badge: string; iconBox: string }> = {
+  PAID: {
+    title: "Pembayaran berhasil",
+    body: "Terima kasih. Penjual sudah menerima pesananmu. Simpan atau cetak struk ini sebagai bukti.",
+    badge: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
+    iconBox: "bg-emerald-400/15 text-emerald-300 ring-8 ring-emerald-400/10",
+  },
+  PENDING: {
+    title: "Menunggu pembayaran",
+    body: "Selesaikan pembayaran sesuai instruksi Midtrans. Setelah membayar, tekan Perbarui status.",
+    badge: "border-amber-400/30 bg-amber-400/10 text-amber-200",
+    iconBox: "bg-amber-400/15 text-amber-300 ring-8 ring-amber-400/10",
+  },
+  FAILED: {
+    title: "Pembayaran gagal",
+    body: "Transaksi dibatalkan atau melewati batas waktu. Tidak ada dana yang ditarik. Kamu bisa memesan ulang dari halaman toko.",
+    badge: "border-rose-400/30 bg-rose-400/10 text-rose-200",
+    iconBox: "bg-rose-400/15 text-rose-300 ring-8 ring-rose-400/10",
+  },
+};
+const view = order ? STATUS[order.status] : null;
+const paymentLabel = (type: string | null) => (type ? type.replace(/_/g, " ").toUpperCase() : "-");
+---
+
+<Base title={order ? `Pesanan ${order.orderCode}` : "Status pesanan"} noindex>
+  <div class="print:hidden"><SiteHeader /></div>
+
+  <main class="mx-auto max-w-lg px-4 py-10 print:py-0">
+    {
+      !order ? (
+        <div class="glass-card rounded-3xl p-8">
+          <h1 class="text-2xl font-bold">{failed ? "Status belum bisa dimuat" : "Pesanan tidak ditemukan"}</h1>
+          <p class="mt-2 text-slate-300">
+            {failed
+              ? "Server sedang tidak bisa dihubungi. Coba muat ulang halaman ini sebentar lagi."
+              : "Periksa lagi kode pesanan di link. Kode diawali SS- dan memakai huruf kapital."}
+          </p>
+          <a href={failed ? Astro.url.pathname : "/"} class="btn-glow mt-6 rounded-xl px-5">
+            {failed ? "Muat ulang" : "Ke beranda"}
+          </a>
+        </div>
+      ) : (
+        <article class="glass-card rounded-3xl p-6 sm:p-8" aria-labelledby="status-title">
+          <div class="flex flex-col items-center text-center">
+            <span class={`flex size-16 items-center justify-center rounded-full ${view!.iconBox}`} aria-hidden="true">
+              {order.status === "PAID" && (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="size-8">
+                  <path d="m5 12.5 4.5 4.5L19 7.5" />
+                </svg>
+              )}
+              {order.status === "PENDING" && (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="size-8">
+                  <circle cx="12" cy="12" r="8.5" />
+                  <path d="M12 7.5V12l3 2" />
+                </svg>
+              )}
+              {order.status === "FAILED" && (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" class="size-8">
+                  <path d="M7 7l10 10M17 7 7 17" />
+                </svg>
+              )}
+            </span>
+            <span class={`mt-4 inline-flex rounded-full border px-3 py-0.5 text-xs font-semibold tracking-wide ${view!.badge}`}>
+              {order.status}
+            </span>
+            <h1 id="status-title" class="mt-3 text-2xl font-bold">{view!.title}</h1>
+            <p class="mt-2 text-pretty text-slate-300">{view!.body}</p>
+          </div>
+
+          <section aria-labelledby="receipt-heading" class="mt-8 border-t border-dashed border-white/15 pt-6">
+            <h2 id="receipt-heading" class="text-sm font-semibold text-slate-300">Rincian pesanan</h2>
+            <dl class="mt-4 space-y-3 text-sm">
+              <div class="flex justify-between gap-4">
+                <dt class="text-slate-400">Kode pesanan</dt>
+                <dd class="text-right font-mono font-medium text-white break-all">{order.orderCode}</dd>
+              </div>
+              <div class="flex justify-between gap-4">
+                <dt class="text-slate-400">Toko</dt>
+                <dd class="text-right text-white">
+                  <a href={`/${order.store.username}`} class="-my-3 inline-flex min-h-11 items-center underline-offset-4 hover:underline">{order.store.displayName}</a>
+                </dd>
+              </div>
+              <div class="flex justify-between gap-4">
+                <dt class="text-slate-400">Pembeli</dt>
+                <dd class="text-right text-white break-words">{order.buyerName}</dd>
+              </div>
+              <div class="flex justify-between gap-4">
+                <dt class="text-slate-400">Tanggal pesan</dt>
+                <dd class="text-right text-white">{formatDate(order.createdAt)}</dd>
+              </div>
+              {order.paidAt && (
+                <div class="flex justify-between gap-4">
+                  <dt class="text-slate-400">Dibayar</dt>
+                  <dd class="text-right text-white">{formatDate(order.paidAt)}</dd>
+                </div>
+              )}
+              <div class="flex justify-between gap-4">
+                <dt class="text-slate-400">Metode</dt>
+                <dd class="text-right text-white">{paymentLabel(order.paymentType)}</dd>
+              </div>
+            </dl>
+
+            <div class="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div class="flex justify-between gap-4 text-sm">
+                <span class="min-w-0 text-white break-words">{order.itemTitle}</span>
+                <span class="shrink-0 tabular-nums text-slate-300">
+                  {order.quantity} × {formatRupiah(order.unitPrice)}
+                </span>
+              </div>
+              <div class="mt-4 flex items-baseline justify-between border-t border-white/10 pt-4">
+                <span class="font-medium text-slate-200">Total</span>
+                <span class="font-display text-2xl font-bold tabular-nums text-emerald-300">{formatRupiah(order.totalAmount)}</span>
+              </div>
+            </div>
+          </section>
+
+          <div class="mt-8 grid gap-2 print:hidden sm:grid-cols-2">
+            {order.status === "PENDING" ? (
+              <button type="button" id="refresh" data-code={order.orderCode} class="btn-glow rounded-xl sm:col-span-2">
+                Perbarui status
+              </button>
+            ) : (
+              <button type="button" id="print" class="btn-glow rounded-xl">
+                Cetak atau simpan PDF
+              </button>
+            )}
+            <a href={`/${order.store.username}`} class:list={["btn-ghost", order.status === "PENDING" && "sm:col-span-2"]}>
+              Kembali ke toko
+            </a>
+          </div>
+          <p id="refresh-status" class="mt-3 text-center text-sm text-slate-400 print:hidden" aria-live="polite"></p>
+          <p class="mt-6 hidden text-center text-xs print:block">Dicetak dari smart-storefront.</p>
+        </article>
+      )
+    }
+  </main>
+  <div class="print:hidden"><SiteFooter /></div>
+</Base>
+
+<script>
+  import { API_URL } from "../../lib/api";
+
+  document.querySelector("#print")?.addEventListener("click", () => window.print());
+
+  const refresh = document.querySelector<HTMLButtonElement>("#refresh");
+  const statusText = document.querySelector<HTMLElement>("#refresh-status");
+  refresh?.addEventListener("click", async () => {
+    refresh.disabled = true;
+    refresh.textContent = "Memeriksa ke Midtrans...";
+    try {
+      const res = await fetch(`${API_URL}/api/checkout/${encodeURIComponent(refresh.dataset.code ?? "")}/sync`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error();
+      const { status } = (await res.json()) as { status: string };
+      if (status === "PENDING") {
+        if (statusText) statusText.textContent = "Pembayaran belum diterima. Coba lagi setelah kamu menyelesaikan pembayaran.";
+        return;
+      }
+      location.reload();
+    } catch {
+      if (statusText) statusText.textContent = "Status belum bisa diperiksa. Coba lagi sebentar lagi.";
+    } finally {
+      refresh.disabled = false;
+      refresh.textContent = "Perbarui status";
+    }
+  });
+</script>

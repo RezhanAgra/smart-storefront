@@ -17,7 +17,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ORDER_CODE = /^SS-[A-Z0-9-]{6,40}$/;
 
 const newOrderCode = () =>
-  `SS-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString("hex").toUpperCase()}`;
+  `SS-${Date.now().toString(36).toUpperCase()}-${randomBytes(6).toString("hex").toUpperCase()}`;
 
 /** POST /api/checkout: publik. Membuat pesanan PENDING dan token Snap. */
 export async function createCheckout(req: Request, res: Response): Promise<void> {

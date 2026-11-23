@@ -22,11 +22,22 @@ export async function errorMessage(res: Response, fallback: string): Promise<str
   return fallback;
 }
 
+/**
+ * Fetch dari server Astro (SSR) ke API. Header x-internal-key membebaskan request SSR dari rate limit
+ * per IP, karena semua pengunjung tampil sebagai satu IP (server Astro). Jangan dipakai di script browser.
+ */
+export function ssrFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const key = import.meta.env.INTERNAL_API_KEY;
+  if (key) headers.set("x-internal-key", key);
+  return fetch(`${API_URL}${path}`, { ...init, headers });
+}
+
 /** Cek sesi di sisi server Astro memakai cookie `token` milik browser. */
 export async function getSessionUser(token: string | undefined): Promise<UserProfile | null> {
   if (!token) return null;
   try {
-    const res = await fetch(`${API_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await ssrFetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) return null;
     const data = (await res.json()) as { user: UserProfile };
     return data.user;

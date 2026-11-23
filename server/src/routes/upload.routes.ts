@@ -27,7 +27,7 @@ router.post("/", requireAuth, upload.single("image"), (req: Request, res: Respon
     res.status(400).json({ message: "Pilih gambar JPG, PNG, atau WebP." });
     return;
   }
-  res.status(201).json({ url: `${env.apiPublicUrl}/uploads/${req.file.filename}` });
+  res.status(201).json({ url: `${env.serverPublicUrl}/uploads/${req.file.filename}` });
 });
 
 router.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
