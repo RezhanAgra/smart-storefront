@@ -9,6 +9,8 @@ const user = await getSessionUser(Astro.cookies.get("token")?.value);
 if (user) return Astro.redirect("/dashboard");
 
 const initialMode = Astro.url.searchParams.get("mode") === "register" ? "register" : "login";
+// Username yang diketik di landing page ikut terbawa ke form daftar.
+const claimed = (Astro.url.searchParams.get("username") ?? "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 30);
 const tabClass =
   "min-h-11 flex-1 rounded-full text-sm font-medium text-slate-300 transition-colors hover:text-white aria-pressed:bg-white/10 aria-pressed:text-white aria-pressed:shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]";
 ---
@@ -60,12 +62,13 @@ const tabClass =
             minlength="3"
             maxlength="30"
             pattern="[a-z0-9]{3,30}"
+            value={claimed || undefined}
             aria-describedby="username-hint"
             class="glass-input mt-1"
           />
           <p id="username-hint" class="mt-1.5 text-sm text-slate-400">
             Huruf kecil dan angka. Alamat tokomu:
-            <span class="font-medium text-slate-100 break-all">{siteHost(Astro.site, Astro.url)}/<span id="username-preview">username</span></span>
+            <span class="font-medium text-slate-100 break-all">{siteHost(Astro.site, Astro.url)}/<span id="username-preview">{claimed || "username"}</span></span>
           </p>
         </div>
         <div>

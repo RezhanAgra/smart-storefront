@@ -1,10 +1,14 @@
 ---
 import Base from "../layouts/Base.astro";
+import BrandLogo from "../components/BrandLogo.astro";
 import type { PublicStoreProfile, StoreItem } from "../types/store";
 import { formatRupiah, ssrFetch } from "../lib/api";
 import { accentOnDark, readableTextOn, safeHex } from "../lib/color";
 
-const username = Astro.params.username ?? "";
+const rawUsername = decodeURIComponent(Astro.params.username ?? "");
+// Alias /@namatoko (format yang dipromosikan di landing page) diarahkan permanen ke /namatoko.
+if (rawUsername.startsWith("@")) return Astro.redirect(`/${encodeURIComponent(rawUsername.slice(1))}`, 301);
+const username = rawUsername;
 
 let store: PublicStoreProfile | null = null;
 try {
@@ -204,6 +208,11 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
                         )}
                         <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                           <p class="font-bold tabular-nums text-emerald-300">{priceLabel(product)}</p>
+                          {product.isDigital && (
+                            <p class="rounded-md border border-cyan-300/25 bg-cyan-400/10 px-1.5 py-0.5 text-xs font-medium text-cyan-200">
+                              Produk digital
+                            </p>
+                          )}
                           {product.stock !== null && (
                             <p class={`text-xs font-medium ${soldOut(product) ? "text-rose-300" : "text-slate-400"}`}>
                               {soldOut(product) ? "Stok habis" : `Stok: ${product.stock}`}
@@ -250,10 +259,11 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
           )}
         </main>
 
-        <footer class="mx-auto max-w-md px-5 pb-10 text-center text-xs text-slate-400">
-          <a href="/" class="inline-flex min-h-11 items-center underline-offset-4 hover:text-slate-200 hover:underline">
-            Buat halaman seperti ini di smart-storefront
-          </a>
+        <footer class="mx-auto max-w-md px-5 pb-10">
+          {/* Watermark tanpa badge PRO: di halaman kreator badge itu bisa terbaca sebagai status langganan toko ini. */}
+          <p class="flex flex-wrap items-center justify-center gap-x-2 text-xs text-slate-400">
+            Dibuat dengan <BrandLogo size="sm" badge={false} />
+          </p>
         </footer>
 
         {paymentsEnabled && (
@@ -307,12 +317,33 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
                     <label for="buyer-note" class="label">Catatan untuk penjual (opsional)</label>
                     <textarea id="buyer-note" name="note" rows="2" maxlength="300" class="glass-input mt-1 py-2.5" />
                   </div>
+                  <div>
+                    <label for="coupon-code" class="label">Kode promo (opsional)</label>
+                    <div class="mt-1 flex gap-2">
+                      <input
+                        id="coupon-code"
+                        maxlength="20"
+                        autocapitalize="characters"
+                        spellcheck="false"
+                        aria-describedby="coupon-status"
+                        class="glass-input min-w-0 font-mono uppercase"
+                      />
+                      <button type="button" id="coupon-apply" class="btn-ghost shrink-0 px-4 text-sm">Pakai</button>
+                    </div>
+                    <p id="coupon-status" class="mt-1.5 text-xs" aria-live="polite" />
+                  </div>
                 </div>
 
-                <p class="mt-5 flex items-baseline justify-between border-t border-white/10 pt-4">
-                  <span class="text-sm text-slate-300">Total</span>
-                  <span id="checkout-total" class="text-xl font-bold tabular-nums text-emerald-300" />
-                </p>
+                <dl class="mt-5 space-y-1 border-t border-white/10 pt-4 text-sm">
+                  <div id="discount-row" class="flex justify-between text-emerald-200" hidden>
+                    <dt id="discount-label">Diskon</dt>
+                    <dd id="discount-amount" class="tabular-nums" />
+                  </div>
+                  <div class="flex items-baseline justify-between">
+                    <dt class="text-slate-300">Total</dt>
+                    <dd id="checkout-total" class="text-xl font-bold tabular-nums text-emerald-300" />
+                  </div>
+                </dl>
 
                 <p id="checkout-error" role="alert" class="mt-3 hidden rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200" />
 
@@ -347,7 +378,7 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
 
 <script>
   import { API_URL, errorMessage, formatRupiah } from "../lib/api";
-  import type { CheckoutResponse, OrderStatus } from "../types/store";
+  import type { CheckoutResponse, CouponPreview, OrderStatus } from "../types/store";
 
   interface SnapCallbacks {
     onSuccess?: () => void;
@@ -383,10 +414,25 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
     const plus = $<HTMLButtonElement>("qty-plus");
 
     let current = { id: "", title: "", price: 0, max: 99, qty: 1 };
+    /** Kode promo yang sudah dicek server, untuk jumlah saat dicek. */
+    let coupon: CouponPreview | null = null;
+    const couponInput = $<HTMLInputElement>("coupon-code");
+    const couponStatus = $("coupon-status");
+    const couponApply = $<HTMLButtonElement>("coupon-apply");
+
+    const setCouponStatus = (text: string, tone: "ok" | "error" | "muted") => {
+      couponStatus.textContent = text;
+      couponStatus.className = `mt-1.5 text-xs ${tone === "ok" ? "text-emerald-200" : tone === "error" ? "text-rose-200" : "text-slate-400"}`;
+    };
 
     const render = () => {
       qtyEl.value = String(current.qty);
-      const total = formatRupiah(current.qty * current.price);
+      const subtotal = current.qty * current.price;
+      const discount = coupon?.discountAmount ?? 0;
+      $("discount-row").hidden = !coupon;
+      $("discount-label").textContent = coupon ? `Diskon ${coupon.code}` : "Diskon";
+      $("discount-amount").textContent = coupon ? `-${formatRupiah(discount)}` : "";
+      const total = formatRupiah(subtotal - discount);
       $("checkout-total").textContent = total;
       submit.textContent = `Bayar ${total}`;
       minus.disabled = current.qty <= 1;
@@ -401,14 +447,62 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
       resultView.hidden = view !== "result";
     };
 
-    minus.addEventListener("click", () => {
-      current.qty = Math.max(1, current.qty - 1);
-      render();
+    async function applyCoupon(silent = false) {
+      const code = couponInput.value.trim().toUpperCase();
+      if (!code) {
+        coupon = null;
+        setCouponStatus("", "muted");
+        render();
+        return;
+      }
+      couponApply.disabled = true;
+      if (!silent) setCouponStatus("Memeriksa kode...", "muted");
+      try {
+        const res = await fetch(`${API_URL}/api/checkout/coupon`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ itemId: current.id, quantity: current.qty, code }),
+        });
+        if (!res.ok) {
+          coupon = null;
+          setCouponStatus(await errorMessage(res, "Kode promo tidak bisa dipakai."), "error");
+        } else {
+          coupon = (await res.json()) as CouponPreview;
+          setCouponStatus(`Kode ${coupon.code} dipakai: hemat ${formatRupiah(coupon.discountAmount)}.`, "ok");
+        }
+      } catch {
+        coupon = null;
+        setCouponStatus("Tidak bisa memeriksa kode. Coba lagi.", "error");
+      } finally {
+        couponApply.disabled = false;
+        render();
+      }
+    }
+    couponApply.addEventListener("click", () => void applyCoupon());
+    couponInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        void applyCoupon();
+      }
     });
-    plus.addEventListener("click", () => {
-      current.qty = Math.min(current.max, current.qty + 1);
-      render();
+    couponInput.addEventListener("input", () => {
+      couponInput.value = couponInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      // Kode berubah: diskon lama tidak berlaku sampai dicek ulang.
+      if (coupon && coupon.code !== couponInput.value) {
+        coupon = null;
+        setCouponStatus("", "muted");
+        render();
+      }
     });
+
+    // Diskon persen bergantung jumlah, jadi kode dicek ulang setiap jumlah berubah.
+    const changeQty = (next: number) => {
+      current.qty = next;
+      render();
+      if (coupon) void applyCoupon(true);
+    };
+    minus.addEventListener("click", () => changeQty(Math.max(1, current.qty - 1)));
+    plus.addEventListener("click", () => changeQty(Math.min(current.max, current.qty + 1)));
     dialog.querySelector("[data-close]")!.addEventListener("click", () => dialog.close());
     // Pesan validasi lama hilang begitu pembeli mulai memperbaiki isian.
     form.addEventListener("input", () => showError(null));
@@ -424,6 +518,9 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
         $("checkout-title").textContent = title;
         $("checkout-unit").textContent = formatRupiah(current.price);
         $("qty-hint").textContent = stock === "" ? "" : `maks. ${current.max}`;
+        coupon = null;
+        couponInput.value = "";
+        setCouponStatus("", "muted");
         showError(null);
         showView("form");
         render();
@@ -488,6 +585,11 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       showError(null);
+      if (couponInput.value.trim() && !coupon) {
+        showError('Tekan "Pakai" untuk memakai kode promo, atau kosongkan kolomnya.');
+        couponInput.focus();
+        return;
+      }
       if (!form.checkValidity()) {
         const invalid = form.querySelector<HTMLInputElement>(":invalid");
         const label = invalid ? form.querySelector(`label[for="${invalid.id}"]`)?.textContent : null;
@@ -510,6 +612,7 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
             buyerName: data.get("buyerName"),
             buyerEmail: data.get("buyerEmail"),
             note: data.get("note"),
+            ...(coupon && { couponCode: coupon.code }),
           }),
         });
         if (!res.ok) {

@@ -28,6 +28,7 @@ export async function getStore(req: Request, res: Response): Promise<void> {
           url: true,
           imageUrl: true,
           orderIndex: true,
+          isDigital: true,
         },
       },
     },

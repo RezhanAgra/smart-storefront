@@ -2,7 +2,7 @@
 import Base from "../../layouts/Base.astro";
 import SiteHeader from "../../components/SiteHeader.astro";
 import SiteFooter from "../../components/SiteFooter.astro";
-import { formatRupiah, ssrFetch } from "../../lib/api";
+import { API_URL, formatRupiah, ssrFetch } from "../../lib/api";
 import type { OrderReceipt, OrderStatus } from "../../types/store";
 
 const orderCode = Astro.params.orderCode ?? "";
@@ -131,12 +131,39 @@ const paymentLabel = (type: string | null) => (type ? type.replace(/_/g, " ").to
                   {order.quantity} × {formatRupiah(order.unitPrice)}
                 </span>
               </div>
+              {order.discountAmount > 0 && (
+                <div class="mt-2 flex justify-between gap-4 text-sm text-emerald-200">
+                  <span>Diskon {order.couponCode}</span>
+                  <span class="tabular-nums">-{formatRupiah(order.discountAmount)}</span>
+                </div>
+              )}
               <div class="mt-4 flex items-baseline justify-between border-t border-white/10 pt-4">
                 <span class="font-medium text-slate-200">Total</span>
                 <span class="font-display text-2xl font-bold tabular-nums text-emerald-300">{formatRupiah(order.totalAmount)}</span>
               </div>
             </div>
           </section>
+
+          {order.digital && (
+            <section aria-labelledby="download-heading" class="mt-6 rounded-2xl border border-cyan-300/20 bg-cyan-400/[0.06] p-4 print:hidden">
+              <h2 id="download-heading" class="font-semibold text-white">File produk digital</h2>
+              <p class="mt-1 text-sm text-slate-300 break-all">{order.digital.fileName}</p>
+              {order.status === "PAID" ? (
+                order.digital.downloadsLeft > 0 ? (
+                  <>
+                    <a href={`${API_URL}/api/orders/download/${encodeURIComponent(order.orderCode)}`} class="btn-glow mt-3 w-full rounded-xl">
+                      Unduh file
+                    </a>
+                    <p class="mt-2 text-xs text-slate-400">Sisa {order.digital.downloadsLeft} kali unduh. Simpan file di perangkatmu.</p>
+                  </>
+                ) : (
+                  <p class="mt-2 text-sm text-amber-200">Batas unduhan sudah tercapai. Hubungi penjual untuk mendapat file lagi.</p>
+                )
+              ) : (
+                <p class="mt-2 text-sm text-slate-400">Tombol unduh muncul di sini setelah pembayaran lunas.</p>
+              )}
+            </section>
+          )}
 
           <div class="mt-8 grid gap-2 print:hidden sm:grid-cols-2">
             {order.status === "PENDING" ? (

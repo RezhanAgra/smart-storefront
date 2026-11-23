@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
+import { digitalFileExists, digitalFilePath, MAX_DOWNLOADS } from "../lib/digital.js";
 
 const STATUSES = new Set(["PENDING", "PAID", "FAILED"]);
 
@@ -16,6 +17,11 @@ export async function listOrders(req: Request, res: Response): Promise<void> {
       itemTitle: true,
       quantity: true,
       grossAmount: true,
+      subtotal: true,
+      couponCode: true,
+      discountAmount: true,
+      digitalFileName: true,
+      downloadCount: true,
       buyerName: true,
       buyerEmail: true,
       note: true,
@@ -46,6 +52,11 @@ export async function getOrderStatus(req: Request, res: Response): Promise<void>
           unitPrice: true,
           quantity: true,
           grossAmount: true,
+          subtotal: true,
+          couponCode: true,
+          discountAmount: true,
+          digitalFileName: true,
+          downloadCount: true,
           status: true,
           paymentType: true,
           paidAt: true,
@@ -60,6 +71,50 @@ export async function getOrderStatus(req: Request, res: Response): Promise<void>
     return;
   }
 
-  const { user, grossAmount, ...rest } = order;
-  res.json({ ...rest, totalAmount: grossAmount, store: user });
+  const { user, grossAmount, digitalFileName, downloadCount, subtotal, discountAmount, ...rest } = order;
+  res.json({
+    ...rest,
+    subtotal: subtotal ?? order.unitPrice * order.quantity,
+    discountAmount: discountAmount ?? 0,
+    totalAmount: grossAmount,
+    store: user,
+    // Info file digital saja; tautan unduh hanya aktif jika lunas.
+    digital: digitalFileName
+      ? { fileName: digitalFileName, downloadsLeft: Math.max(0, MAX_DOWNLOADS - (downloadCount ?? 0)) }
+      : null,
+  });
+}
+
+/**
+ * GET /api/orders/download/:orderCode: publik, untuk pembeli. Hanya untuk pesanan PAID yang berisi
+ * produk digital, maksimal MAX_DOWNLOADS kali. Kode pesanan (48 bit acak) berfungsi sebagai kunci.
+ */
+export async function downloadDigital(req: Request, res: Response): Promise<void> {
+  const orderCode = String(req.params.orderCode ?? "");
+  const order = ORDER_CODE.test(orderCode)
+    ? await prisma.order.findUnique({
+        where: { orderCode },
+        select: { id: true, status: true, digitalFileKey: true, digitalFileName: true, downloadCount: true },
+      })
+    : null;
+
+  if (!order || !order.digitalFileKey) {
+    res.status(404).json({ message: "File tidak ditemukan untuk pesanan ini." });
+    return;
+  }
+  if (order.status !== "PAID") {
+    res.status(403).json({ message: "File bisa diunduh setelah pembayaran lunas." });
+    return;
+  }
+  if ((order.downloadCount ?? 0) >= MAX_DOWNLOADS) {
+    res.status(429).json({ message: `Batas ${MAX_DOWNLOADS} kali unduhan sudah tercapai. Hubungi penjual.` });
+    return;
+  }
+  if (!digitalFileExists(order.digitalFileKey)) {
+    res.status(410).json({ message: "File sudah tidak tersedia di server. Hubungi penjual." });
+    return;
+  }
+
+  await prisma.order.update({ where: { id: order.id }, data: { downloadCount: { increment: 1 } } });
+  res.download(digitalFilePath(order.digitalFileKey), order.digitalFileName ?? order.digitalFileKey);
 }

@@ -19,6 +19,8 @@ interface SnapRequest {
   orderCode: string;
   grossAmount: number;
   item: { id: string; name: string; price: number; quantity: number };
+  /** Diskon kupon (Rupiah). Dikirim sebagai item harga negatif agar total item = gross_amount. */
+  discount?: { code: string; amount: number };
   customer: { name: string; email: string };
 }
 
@@ -29,7 +31,12 @@ export async function createSnapTransaction(req: SnapRequest): Promise<{ token: 
     body: JSON.stringify({
       transaction_details: { order_id: req.orderCode, gross_amount: req.grossAmount },
       // Midtrans membatasi nama item 50 karakter.
-      item_details: [{ ...req.item, name: req.item.name.slice(0, 50) }],
+      item_details: [
+        { ...req.item, name: req.item.name.slice(0, 50) },
+        ...(req.discount
+          ? [{ id: "DISCOUNT", name: `Diskon ${req.discount.code}`.slice(0, 50), price: -req.discount.amount, quantity: 1 }]
+          : []),
+      ],
       customer_details: { first_name: req.customer.name.slice(0, 50), email: req.customer.email },
     }),
   });

@@ -16,6 +16,13 @@ export async function applyOrderStatus(orderCode: string, status: OrderStatus, p
       data: { status: "PAID", paidAt: new Date(), paymentType },
     });
     if (claimed.count === 1) {
+      // Pemakaian kode promo dihitung hanya untuk pesanan yang benar-benar lunas.
+      if (order.couponCode) {
+        await prisma.coupon.updateMany({
+          where: { userId: order.userId, code: order.couponCode },
+          data: { usedCount: { increment: 1 } },
+        });
+      }
       const decremented = await prisma.item.updateMany({
         where: { id: order.itemId, stock: { gte: order.quantity } },
         data: { stock: { decrement: order.quantity } },

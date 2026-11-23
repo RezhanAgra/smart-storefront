@@ -47,3 +47,24 @@ export async function uploadImage(file: File): Promise<string> {
   }
   return ((await res.json()) as { url: string }).url;
 }
+
+export const MAX_DIGITAL_BYTES = 25 * 1024 * 1024;
+
+/** Unggah file produk digital ke folder privat server (`POST /api/uploads/digital`). */
+export async function uploadDigital(file: File): Promise<{ fileKey: string; fileName: string }> {
+  if (file.size > MAX_DIGITAL_BYTES) throw new Error("Ukuran file maksimal 25 MB.");
+  const body = new FormData();
+  body.append("file", file);
+  let res: Response;
+  try {
+    res = await api("/uploads/digital", { method: "POST", body });
+  } catch {
+    throw new Error("Tidak bisa terhubung ke server.");
+  }
+  if (redirectIfUnauthorized(res)) throw new Error("Sesi berakhir.");
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(data?.message ?? "Gagal mengunggah file.");
+  }
+  return (await res.json()) as { fileKey: string; fileName: string };
+}

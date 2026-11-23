@@ -303,7 +303,7 @@ const platforms = ["Instagram", "TikTok", "WhatsApp", "Shopee", "Tokopedia", "Yo
         return;
       }
       const { user } = (await res.json()) as { user: UserProfile };
-      document.querySelectorAll("header .font-display").forEach((el) => (el.textContent = user.displayName));
+      document.querySelectorAll("[data-store-name]").forEach((el) => (el.textContent = user.displayName));
       toast("Profil tersimpan. Halaman tokomu sudah diperbarui.");
     } catch {
       formError.textContent = "Tidak bisa terhubung ke server.";

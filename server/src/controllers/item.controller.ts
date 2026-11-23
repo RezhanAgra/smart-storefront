@@ -10,6 +10,7 @@ import {
   ValidationError,
   type Body,
 } from "../lib/validation.js";
+import { cleanFileName, digitalFileExists } from "../lib/digital.js";
 import { firstIssue, reorderSchema } from "../lib/schemas.js";
 
 const ITEM_TYPES = ["link", "product"] as const;
@@ -24,6 +25,18 @@ function parseType(value: unknown): ItemType | undefined {
 /** Field yang boleh diisi user, dipakai bersama oleh create dan update. */
 function parseEditableFields(body: Body) {
   const isActive = body.isActive;
+  const isDigital = body.isDigital;
+  if (isDigital !== undefined && typeof isDigital !== "boolean") throw new ValidationError("isDigital harus boolean.");
+
+  // File digital harus hasil upload ke /api/uploads/digital (key valid dan filenya ada).
+  let digitalFileKey: string | null | undefined;
+  if (body.digitalFileKey === null || body.digitalFileKey === "") digitalFileKey = null;
+  else if (body.digitalFileKey !== undefined) {
+    if (!digitalFileExists(body.digitalFileKey as string)) throw new ValidationError("File digital tidak ditemukan. Unggah ulang.");
+    digitalFileKey = body.digitalFileKey as string;
+  }
+  const rawName = optionalString(body, "digitalFileName");
+
   if (isActive !== undefined && typeof isActive !== "boolean") throw new ValidationError("isActive harus boolean.");
 
   return {
@@ -35,6 +48,9 @@ function parseEditableFields(body: Body) {
     imageUrl: optionalUrl(body, "imageUrl"),
     orderIndex: optionalInt(body, "orderIndex"),
     isActive: isActive as boolean | undefined,
+    isDigital: isDigital as boolean | undefined,
+    digitalFileKey,
+    digitalFileName: rawName === undefined ? undefined : rawName === null ? null : cleanFileName(rawName),
   };
 }
 
@@ -65,9 +81,12 @@ export async function createItem(req: Request, res: Response): Promise<void> {
 
   // Item baru ditaruh di urutan paling bawah kecuali orderIndex dikirim.
   const orderIndex = fields.orderIndex ?? (await prisma.item.count({ where: { userId } }));
+  // Produk digital tanpa isian stok berarti tanpa batas (null), bukan stok 0 bawaan skema.
+  const stock = fields.stock ?? (fields.isDigital ? null : undefined);
 
   const data: Prisma.ItemUncheckedCreateInput = {
     ...fields,
+    stock,
     type,
     title,
     orderIndex,

@@ -10,7 +10,7 @@ import { firstIssue, updateProfileSchema } from "../lib/schemas.js";
 const USERNAME = /^[a-z0-9]{3,30}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Nama yang bentrok dengan route statis di client Astro (/login, /dashboard, /404, dst).
-const RESERVED_USERNAMES = new Set(["login", "logout", "register", "dashboard", "order", "api", "admin", "404", "500"]);
+const RESERVED_USERNAMES = new Set(["login", "logout", "register", "dashboard", "order", "demo", "api", "admin", "404", "500"]);
 
 /** Field user yang aman dikirim ke client (tanpa passwordHash). */
 export const publicUserSelect = {

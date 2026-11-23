@@ -13,6 +13,7 @@ import orderRoutes from "./routes/order.routes.js";
 import analyticsRoutes from "./routes/analytics.routes.js";
 import uploadRoutes, { UPLOAD_DIR } from "./routes/upload.routes.js";
 import { checkoutRouter, paymentRouter } from "./routes/checkout.routes.js";
+import couponRoutes from "./routes/coupon.routes.js";
 
 const app = express();
 
@@ -55,6 +56,7 @@ app.use("/api/store", storeRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/uploads", uploadRoutes);
+app.use("/api/coupons", couponRoutes);
 app.use("/api/checkout", checkoutRouter);
 app.use("/api/payments", paymentRouter);
 

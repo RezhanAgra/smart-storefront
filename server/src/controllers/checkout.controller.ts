@@ -12,6 +12,47 @@ import {
   type MidtransStatus,
 } from "../lib/midtrans.js";
 import { applyOrderStatus } from "../lib/orders.js";
+import { quoteCoupon } from "../lib/coupons.js";
+
+/** Item produk aktif yang bisa dibayar online, atau melempar error untuk ditampilkan ke pembeli. */
+async function findPayableItem(itemId: unknown, quantity: number) {
+  if (!isObjectId(itemId)) throw new ValidationError("Produk tidak valid.");
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
+    throw new ValidationError("Jumlah harus 1 sampai 99.");
+  }
+  const item = await prisma.item.findFirst({ where: { id: itemId, isActive: true, type: "product" } });
+  if (!item) throw new NotFoundError("Produk tidak ditemukan atau sudah tidak dijual.");
+  const seller = await prisma.user.findUnique({ where: { id: item.userId }, select: { username: true } });
+  if (seller?.username === DEMO_USERNAME) throw new ValidationError("Ini toko demo, jadi pembelian dinonaktifkan.");
+  if (!item.price || item.price < 1) throw new ValidationError("Produk ini tidak bisa dibayar online.");
+  if (item.stock !== null && item.stock < quantity) {
+    throw new ValidationError(item.stock === 0 ? "Stok habis." : `Stok tersisa ${item.stock}.`);
+  }
+  if (item.isDigital && !item.digitalFileKey) throw new ValidationError("File produk digital ini belum disiapkan penjual.");
+  return item;
+}
+
+class NotFoundError extends ValidationError {
+  override readonly status = 404;
+}
+
+/**
+ * POST /api/checkout/coupon: publik. Cek kode promo sebelum membayar: { itemId, quantity, code }
+ * -> { code, subtotal, discountAmount, total }. Tidak mengubah data apa pun.
+ */
+export async function previewCoupon(req: Request, res: Response): Promise<void> {
+  const body = asBody(req.body);
+  const code = optionalString(body, "code");
+  if (!code) throw new ValidationError("Masukkan kode promo.");
+  const quantity = Number(body.quantity);
+  const item = await findPayableItem(body.itemId, quantity);
+  const subtotal = item.price! * quantity;
+  const { coupon, discount } = await quoteCoupon(item.userId, code, subtotal);
+  res.json({ code: coupon.code, subtotal, discountAmount: discount, total: subtotal - discount });
+}
+
+/** Akun toko contoh dari `npm run seed`. Dibuat agar pengunjung bisa melihat tampilan, bukan untuk berjualan. */
+export const DEMO_USERNAME = "demo";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ORDER_CODE = /^SS-[A-Z0-9-]{6,40}$/;
@@ -27,38 +68,30 @@ export async function createCheckout(req: Request, res: Response): Promise<void>
   }
 
   const body = asBody(req.body);
-  const itemId = body.itemId;
   const quantity = Number(body.quantity);
+  const couponInput = optionalString(body, "couponCode");
   const buyerName = optionalString(body, "buyerName");
   const buyerEmail = optionalString(body, "buyerEmail")?.toLowerCase();
   const note = optionalString(body, "note") ?? null;
 
-  if (!isObjectId(itemId)) throw new ValidationError("Produk tidak valid.");
   if (!buyerName) throw new ValidationError("Nama wajib diisi.");
   if (!buyerEmail || !EMAIL.test(buyerEmail)) throw new ValidationError("Email tidak valid.");
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
-    throw new ValidationError("Jumlah harus 1 sampai 99.");
-  }
   if (note && note.length > 300) throw new ValidationError("Catatan maksimal 300 karakter.");
 
-  const item = await prisma.item.findFirst({ where: { id: itemId, isActive: true, type: "product" } });
-  if (!item) {
-    res.status(404).json({ message: "Produk tidak ditemukan atau sudah tidak dijual." });
-    return;
-  }
-  if (!item.price || item.price < 1) throw new ValidationError("Produk ini tidak bisa dibayar online.");
-  if (item.stock !== null && item.stock < quantity) {
-    throw new ValidationError(item.stock === 0 ? "Stok habis." : `Stok tersisa ${item.stock}.`);
-  }
-
+  const item = await findPayableItem(body.itemId, quantity);
+  const unitPrice = item.price!;
+  const subtotal = unitPrice * quantity;
+  const quote = couponInput ? await quoteCoupon(item.userId, couponInput, subtotal) : null;
+  const discountAmount = quote?.discount ?? 0;
+  const grossAmount = subtotal - discountAmount;
   const orderCode = newOrderCode();
-  const grossAmount = item.price * quantity;
 
   try {
     const snap = await createSnapTransaction({
       orderCode,
       grossAmount,
-      item: { id: item.id, name: item.title, price: item.price, quantity },
+      item: { id: item.id, name: item.title, price: unitPrice, quantity },
+      ...(quote && { discount: { code: quote.coupon.code, amount: discountAmount } }),
       customer: { name: buyerName, email: buyerEmail },
     });
 
@@ -68,9 +101,14 @@ export async function createCheckout(req: Request, res: Response): Promise<void>
         userId: item.userId,
         itemId: item.id,
         itemTitle: item.title,
-        unitPrice: item.price,
+        unitPrice,
         quantity,
+        subtotal,
+        couponCode: quote?.coupon.code ?? null,
+        discountAmount,
         grossAmount,
+        digitalFileKey: item.isDigital ? item.digitalFileKey : null,
+        digitalFileName: item.isDigital ? item.digitalFileName : null,
         buyerName,
         buyerEmail,
         note,

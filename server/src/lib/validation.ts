@@ -41,5 +41,5 @@ const OBJECT_ID = /^[a-f0-9]{24}$/i;
 export const isObjectId = (value: unknown): value is string => typeof value === "string" && OBJECT_ID.test(value);
 
 export class ValidationError extends Error {
-  readonly status = 400;
+  readonly status: number = 400;
 }

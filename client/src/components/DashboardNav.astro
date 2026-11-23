@@ -1,9 +1,10 @@
 ---
 import type { UserProfile } from "../types/store";
+import BrandLogo from "./BrandLogo.astro";
 
 interface Props {
   user: UserProfile;
-  active: "analytics" | "items" | "orders" | "settings";
+  active: "analytics" | "items" | "orders" | "promo" | "qr" | "settings";
 }
 const { user, active } = Astro.props;
 
@@ -11,28 +12,31 @@ const links = [
   { key: "analytics", href: "/dashboard", label: "Analitik" },
   { key: "items", href: "/dashboard/items", label: "Produk & Tautan" },
   { key: "orders", href: "/dashboard/orders", label: "Pesanan" },
+  { key: "promo", href: "/dashboard/promo", label: "Promo" },
+  { key: "qr", href: "/dashboard/qr", label: "QR Kasir" },
   { key: "settings", href: "/dashboard/settings", label: "Pengaturan" },
 ] as const;
 ---
 
 <header class="z-20 mx-4 mt-4 lg:sticky lg:top-4 lg:mx-auto lg:max-w-6xl">
   <div class="surface rounded-2xl px-4 py-2 backdrop-blur">
-    <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-      <div class="min-w-0">
-        <p class="truncate font-display font-bold text-white">{user.displayName}</p>
-        <a
-          href={`/${user.username}`}
-          target="_blank"
-          rel="noopener"
-          class="inline-flex min-h-11 items-center text-sm text-indigo-300 underline-offset-4 hover:text-indigo-200 hover:underline"
-        >
-          Buka halaman toko<span class="sr-only"> (tab baru)</span>
-        </a>
-      </div>
-      <button type="button" id="logout" class="btn-ghost text-sm">Keluar</button>
+    <div class="flex items-center justify-between gap-3">
+      <BrandLogo href="/dashboard" />
+      <button type="button" id="logout" class="btn-ghost shrink-0 text-sm">Keluar</button>
+    </div>
+    <div class="mt-1.5 flex flex-wrap items-center justify-between gap-x-4 border-t border-white/10 pt-1.5">
+      <p class="min-w-0 truncate font-display font-bold text-white" data-store-name>{user.displayName}</p>
+      <a
+        href={`/${user.username}`}
+        target="_blank"
+        rel="noopener"
+        class="inline-flex min-h-11 items-center text-sm text-indigo-300 underline-offset-4 hover:text-indigo-200 hover:underline"
+      >
+        Buka halaman toko<span class="sr-only"> (tab baru)</span>
+      </a>
     </div>
     <nav aria-label="Dashboard" class="mt-2 border-t border-white/10 pt-2">
-      <ul class="grid grid-cols-2 gap-1 sm:flex sm:gap-2">
+      <ul class="grid grid-cols-3 gap-1 lg:flex lg:gap-2">
         {
           links.map((link) => (
             <li>

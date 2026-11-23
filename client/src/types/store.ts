@@ -13,12 +13,16 @@ export interface StoreItem {
   url: string | null;
   imageUrl: string | null;
   orderIndex: number;
+  /** Produk digital: file bisa diunduh dari struk setelah lunas. */
+  isDigital?: boolean | null;
 }
 
 /** Item milik user di dashboard (`GET /api/items`), termasuk field internal. */
 export interface DashboardItem extends StoreItem {
   userId: string;
   isActive: boolean;
+  digitalFileKey: string | null;
+  digitalFileName: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -66,7 +70,11 @@ export interface OrderReceipt {
   itemTitle: string;
   unitPrice: number;
   quantity: number;
+  subtotal: number;
+  couponCode: string | null;
+  discountAmount: number;
   totalAmount: number;
+  digital: { fileName: string; downloadsLeft: number } | null;
   status: OrderStatus;
   paymentType: string | null;
   paidAt: string | null;
@@ -89,6 +97,10 @@ export interface Order {
   itemTitle: string;
   quantity: number;
   grossAmount: number;
+  couponCode: string | null;
+  discountAmount: number | null;
+  digitalFileName: string | null;
+  downloadCount: number | null;
   buyerName: string;
   buyerEmail: string;
   note: string | null;
@@ -109,4 +121,25 @@ export interface AnalyticsSummary {
 
 export interface ApiError {
   message: string;
+}
+
+/** `GET /api/coupons` */
+export interface Coupon {
+  id: string;
+  code: string;
+  type: "PERCENT" | "FIXED";
+  value: number;
+  maxUses: number | null;
+  usedCount: number;
+  expiresAt: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+/** `POST /api/checkout/coupon` */
+export interface CouponPreview {
+  code: string;
+  subtotal: number;
+  discountAmount: number;
+  total: number;
 }

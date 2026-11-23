@@ -23,6 +23,7 @@ cd server
 npm install
 npx prisma generate
 npx prisma db push      # membuat index (username/email unik, orderCode unik)
+npm run seed            # toko contoh di /demo (tautan "Akun Demo" di landing). Aman dijalankan ulang.
 npm run dev
 
 # 3. Client Astro, http://localhost:4321 (terminal lain)
@@ -100,11 +101,16 @@ Gambar hasil upload disimpan di `server/uploads/` (tidak masuk git). Untuk produ
 | GET | `/api/orders?status=PAID\|PENDING\|FAILED` | ya | Pesanan milik penjual, terbaru dulu (maks. 200) |
 | GET | `/api/orders/status/:orderCode` | | Struk publik: tanpa email, catatan, atau id internal |
 | GET | `/api/health` | | Ping database. 200 `{ status: "ok", timestamp }` atau 503 |
+| GET/POST | `/api/coupons` | ya | Daftar dan buat kode promo: `code` (3-20 huruf/angka), `type` (`PERCENT` 1-90 / `FIXED` Rupiah), `value`, `maxUses`, `expiresAt` |
+| PUT/DELETE | `/api/coupons/:id` | ya | Aktif/nonaktif (`isActive`) dan hapus |
+| POST | `/api/checkout/coupon` | | Cek kode promo sebelum bayar: `{ itemId, quantity, code }` → `{ code, subtotal, discountAmount, total }` |
+| POST | `/api/uploads/digital` | ya | File produk digital (field `file`, PDF/ZIP/EPUB/MP3/MP4/JPG/PNG/TXT, maks. 25 MB) ke folder privat → `{ fileKey, fileName }` |
+| GET | `/api/orders/download/:orderCode` | | Unduh file produk digital. Hanya pesanan `PAID`, maks. 10 kali per pesanan |
 | GET | `/api/analytics?days=7\|14\|30` | ya | Total, seri harian (WIB), dan 5 item teratas |
 
 Auth diterima dari cookie `token` atau header `Authorization: Bearer <token>`.
 
-Username `login`, `logout`, `register`, `dashboard`, `order`, `api`, `admin`, `404`, dan `500` ditolak saat daftar karena bentrok dengan route client.
+Username `login`, `logout`, `register`, `dashboard`, `order`, `demo`, `api`, `admin`, `404`, dan `500` ditolak saat daftar karena bentrok dengan route client.
 
 ## Halaman client
 
@@ -112,12 +118,22 @@ Username `login`, `logout`, `register`, `dashboard`, `order`, `api`, `admin`, `4
 | --- | --- |
 | `/` | Landing |
 | `/login` | Masuk dan daftar |
-| `/<username>` | Halaman toko publik |
+| `/<username>` | Halaman toko publik. `/@<username>` dialihkan permanen ke sini |
+| `/demo` | Toko contoh dari `npm run seed`. Checkout untuk akun ini ditolak server |
 | `/order/<orderCode>` | Struk dan status pembayaran pembeli (bisa dicetak/disimpan PDF) |
 | `/dashboard` | Analitik |
 | `/dashboard/items` | Tambah, edit, sembunyikan, urutkan, dan hapus produk/tautan |
-| `/dashboard/orders` | Riwayat transaksi |
+| `/dashboard/orders` | Riwayat transaksi (termasuk kode promo dan unduhan file) |
+| `/dashboard/promo` | Kode promo: buat, aktif/nonaktif, hapus, lihat pemakaian |
+| `/dashboard/qr` | QR Code kasir menuju halaman toko: cetak poster, unduh PNG/SVG |
 | `/dashboard/settings` | Foto profil, nama toko, bio, warna aksen, tautan sosial |
+
+## Kode promo dan produk digital
+
+- Diskon dikirim ke Midtrans sebagai baris item berharga negatif, sehingga jumlah item sama dengan `gross_amount`. Diskon tidak boleh menghabiskan seluruh harga (Midtrans menolak total 0).
+- `usedCount` kupon bertambah saat pesanan menjadi `PAID`, bukan saat checkout. Pesanan `PENDING` yang bersamaan bisa membuat kuota terlewati sedikit.
+- File produk digital disimpan di `server/private-uploads/` (tidak masuk git, tidak disajikan `express.static`). Pembeli mengunduh lewat tombol di struk `/order/<kode>` setelah lunas. Belum ada pengiriman lewat email.
+- Untuk production, pindahkan `uploads/` dan `private-uploads/` ke object storage (misalnya S3 dengan URL bertanda tangan).
 
 ## Keamanan
 

@@ -51,3 +51,22 @@ export const reorderSchema = z
 
 /** Pesan error pertama dari Zod, untuk ditampilkan langsung ke user. */
 export const firstIssue = (error: z.ZodError): string => error.issues[0]?.message ?? "Data tidak valid.";
+
+const COUPON_CODE = /^[A-Z0-9]{3,20}$/;
+
+export const couponCreateSchema = z
+  .object({
+    code: z
+      .string()
+      .trim()
+      .transform((v) => v.toUpperCase())
+      .pipe(z.string().regex(COUPON_CODE, "Kode promo 3 sampai 20 huruf/angka, tanpa spasi.")),
+    type: z.enum(["PERCENT", "FIXED"], { error: 'type harus "PERCENT" atau "FIXED".' }),
+    value: z.number({ error: "Nilai diskon wajib angka." }).int().min(1, "Nilai diskon minimal 1."),
+    maxUses: z.number().int().min(1, "Batas pemakaian minimal 1.").nullable().optional(),
+    expiresAt: z.coerce.date({ error: "Tanggal kedaluwarsa tidak valid." }).nullable().optional(),
+    isActive: z.boolean().optional(),
+  })
+  .refine((c) => c.type !== "PERCENT" || c.value <= 90, { message: "Diskon persen maksimal 90%.", path: ["value"] });
+
+export const couponUpdateSchema = z.object({ isActive: z.boolean() });

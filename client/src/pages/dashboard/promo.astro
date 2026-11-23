@@ -1,0 +1,283 @@
+---
+import Base from "../../layouts/Base.astro";
+import DashboardNav from "../../components/DashboardNav.astro";
+import { requireUser } from "../../lib/api";
+
+const user = await requireUser(Astro);
+if (!user) return Astro.redirect("/login");
+---
+
+<Base title="Kode Promo | smart-storefront" noindex>
+  <DashboardNav user={user} active="promo" />
+
+  <main class="mx-auto max-w-6xl px-4 py-8">
+    <h1 class="text-2xl font-bold">Kode promo</h1>
+    <p class="mt-1 text-sm text-slate-400">
+      Pembeli memasukkan kode di form checkout. Pemakaian dihitung saat pesanan lunas.
+    </p>
+
+    <div class="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+      <form id="coupon-form" class="glass-card rounded-2xl p-5 sm:p-6" novalidate>
+        <h2 class="text-lg font-bold">Buat kode baru</h2>
+
+        <div class="mt-4">
+          <label for="c-code" class="label">Kode</label>
+          <input
+            id="c-code"
+            name="code"
+            required
+            minlength="3"
+            maxlength="20"
+            pattern="[A-Za-z0-9]{3,20}"
+            autocapitalize="characters"
+            spellcheck="false"
+            placeholder="HEMAT20"
+            aria-describedby="c-code-hint"
+            class="glass-input mt-1 font-mono uppercase"
+          />
+          <p id="c-code-hint" class="mt-1.5 text-xs text-slate-400">3 sampai 20 huruf atau angka, tanpa spasi.</p>
+        </div>
+
+        <fieldset class="mt-4">
+          <legend class="label">Jenis diskon</legend>
+          <div class="mt-1 grid grid-cols-2 gap-2">
+            <label class="flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 text-sm has-[:checked]:border-indigo-300/50 has-[:checked]:bg-indigo-400/10 has-[:checked]:text-white has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-indigo-300">
+              <input type="radio" name="type" value="PERCENT" checked class="size-4 accent-indigo-400" />
+              Persen (%)
+            </label>
+            <label class="flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 text-sm has-[:checked]:border-indigo-300/50 has-[:checked]:bg-indigo-400/10 has-[:checked]:text-white has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-indigo-300">
+              <input type="radio" name="type" value="FIXED" class="size-4 accent-indigo-400" />
+              Nominal (Rp)
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="mt-4">
+          <label for="c-value" class="label" id="c-value-label">Besar diskon (%)</label>
+          <input id="c-value" name="value" type="number" required min="1" max="90" step="1" inputmode="numeric" class="glass-input mt-1" />
+        </div>
+
+        <div class="mt-4 grid grid-cols-2 gap-3">
+          <div>
+            <label for="c-max" class="label">Kuota (opsional)</label>
+            <input id="c-max" name="maxUses" type="number" min="1" step="1" inputmode="numeric" placeholder="Tanpa batas" class="glass-input mt-1" />
+          </div>
+          <div>
+            <label for="c-exp" class="label">Berlaku sampai</label>
+            <input id="c-exp" name="expiresAt" type="date" class="glass-input mt-1 [color-scheme:dark]" />
+          </div>
+        </div>
+
+        <p id="form-error" role="alert" class="mt-4 hidden rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200"></p>
+        <button type="submit" class="btn-glow mt-5 w-full rounded-xl">Simpan kode promo</button>
+      </form>
+
+      <section aria-labelledby="list-heading">
+        <h2 id="list-heading" class="text-lg font-bold">Kode kamu</h2>
+        <div id="coupons" class="mt-4" aria-live="polite">
+          <p data-state="loading" class="text-slate-400">Memuat kode promo...</p>
+          <div data-state="error" hidden class="glass-card rounded-2xl p-6">
+            <p id="error-text" class="text-rose-200">Kode promo tidak bisa dimuat.</p>
+            <button type="button" id="retry" class="btn-ghost mt-4">Coba lagi</button>
+          </div>
+          <p data-state="empty" hidden class="rounded-2xl border border-dashed border-white/15 p-8 text-center text-slate-300">
+            Belum ada kode promo. Buat yang pertama lewat form di samping.
+          </p>
+          <ul data-state="ready" hidden id="coupon-list" class="space-y-3"></ul>
+        </div>
+
+        <template id="coupon-template">
+          <li class="glass-card rounded-2xl p-4 data-[inactive]:opacity-70">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="font-mono text-lg font-bold tracking-wide text-white" data-field="code"></p>
+                <p class="text-sm text-emerald-300" data-field="value"></p>
+                <p class="mt-1 text-xs text-slate-400" data-field="meta"></p>
+              </div>
+              <span class="rounded-full border px-2.5 py-0.5 text-xs font-semibold" data-field="status"></span>
+            </div>
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
+              <button type="button" role="switch" data-action="toggle" class="group flex min-h-11 items-center gap-3 rounded-xl pr-2 text-sm text-slate-200 disabled:opacity-50">
+                <span class="relative h-6 w-11 shrink-0 rounded-full border border-white/15 bg-white/10 transition-colors group-aria-checked:border-emerald-300/40 group-aria-checked:bg-emerald-500/60">
+                  <span class="absolute left-0.5 top-0.5 size-[18px] rounded-full bg-white shadow transition-transform group-aria-checked:translate-x-5"></span>
+                </span>
+                <span data-field="toggle-label"></span>
+              </button>
+              <button
+                type="button"
+                data-action="delete"
+                class="min-h-11 rounded-xl border border-rose-400/30 px-3 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/10 active:translate-y-px disabled:opacity-50"
+              >
+                Hapus
+              </button>
+            </div>
+          </li>
+        </template>
+      </section>
+    </div>
+  </main>
+</Base>
+
+<script>
+  import { errorMessage, formatRupiah } from "../../lib/api";
+  import { api, redirectIfUnauthorized, showState } from "../../lib/client";
+  import { toast } from "../../lib/toast";
+  import type { Coupon } from "../../types/store";
+
+  const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
+  const root = $<HTMLElement>("#coupons");
+  const list = $<HTMLUListElement>("#coupon-list");
+  const template = $<HTMLTemplateElement>("#coupon-template");
+  const form = $<HTMLFormElement>("#coupon-form");
+  const formError = $<HTMLElement>("#form-error");
+  const valueInput = $<HTMLInputElement>("#c-value");
+  let coupons: Coupon[] = [];
+
+  const dateFmt = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeZone: "Asia/Jakarta" });
+
+  function statusOf(c: Coupon): { label: string; cls: string } {
+    if (!c.isActive) return { label: "Nonaktif", cls: "border-white/15 text-slate-300" };
+    if (c.expiresAt && new Date(c.expiresAt).getTime() < Date.now()) return { label: "Kedaluwarsa", cls: "border-rose-400/30 bg-rose-400/10 text-rose-200" };
+    if (c.maxUses !== null && c.usedCount >= c.maxUses) return { label: "Kuota habis", cls: "border-amber-400/30 bg-amber-400/10 text-amber-200" };
+    return { label: "Berlaku", cls: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200" };
+  }
+
+  function render() {
+    list.replaceChildren(
+      ...coupons.map((c) => {
+        const node = template.content.firstElementChild!.cloneNode(true) as HTMLLIElement;
+        const field = (n: string) => node.querySelector<HTMLElement>(`[data-field="${n}"]`)!;
+        if (!c.isActive) node.dataset.inactive = "";
+        field("code").textContent = c.code;
+        field("value").textContent = c.type === "PERCENT" ? `Diskon ${c.value}%` : `Potongan ${formatRupiah(c.value)}`;
+        const used = c.maxUses === null ? `Dipakai ${c.usedCount}x` : `Dipakai ${c.usedCount} dari ${c.maxUses}`;
+        field("meta").textContent = [used, c.expiresAt ? `berlaku sampai ${dateFmt.format(new Date(c.expiresAt))}` : "tanpa batas waktu"].join(" · ");
+        const st = statusOf(c);
+        const badge = field("status");
+        badge.textContent = st.label;
+        badge.className += ` ${st.cls}`;
+
+        const toggle = node.querySelector<HTMLButtonElement>('[data-action="toggle"]')!;
+        toggle.setAttribute("aria-checked", String(c.isActive));
+        toggle.setAttribute("aria-label", `Aktifkan kode ${c.code}`);
+        field("toggle-label").textContent = c.isActive ? "Aktif" : "Nonaktif";
+        toggle.addEventListener("click", () => void setActive(c, toggle));
+
+        const del = node.querySelector<HTMLButtonElement>('[data-action="delete"]')!;
+        del.setAttribute("aria-label", `Hapus kode ${c.code}`);
+        del.addEventListener("click", () => void remove(c, del));
+        return node;
+      }),
+    );
+    showState(root, coupons.length ? "ready" : "empty");
+  }
+
+  async function load() {
+    showState(root, "loading");
+    try {
+      const res = await api("/coupons");
+      if (redirectIfUnauthorized(res)) return;
+      if (!res.ok) throw new Error(await errorMessage(res, "Kode promo tidak bisa dimuat."));
+      coupons = ((await res.json()) as { coupons: Coupon[] }).coupons;
+      render();
+    } catch (err) {
+      $("#error-text").textContent = err instanceof TypeError ? "Tidak bisa terhubung ke server." : (err as Error).message;
+      showState(root, "error");
+    }
+  }
+
+  async function setActive(c: Coupon, button: HTMLButtonElement) {
+    button.disabled = true;
+    try {
+      const res = await api(`/coupons/${c.id}`, { method: "PUT", body: JSON.stringify({ isActive: !c.isActive }) });
+      if (redirectIfUnauthorized(res)) return;
+      if (!res.ok) throw new Error(await errorMessage(res, "Gagal mengubah status."));
+      const { coupon } = (await res.json()) as { coupon: Coupon };
+      coupons = coupons.map((x) => (x.id === coupon.id ? coupon : x));
+      render();
+      list.querySelector<HTMLButtonElement>(`[aria-label="Aktifkan kode ${coupon.code}"]`)?.focus();
+      toast(coupon.isActive ? `${coupon.code} aktif.` : `${coupon.code} dinonaktifkan.`);
+    } catch (err) {
+      button.disabled = false;
+      toast(err instanceof TypeError ? "Tidak bisa terhubung ke server." : (err as Error).message, "error");
+    }
+  }
+
+  async function remove(c: Coupon, button: HTMLButtonElement) {
+    if (!confirm(`Hapus kode ${c.code}? Pesanan lama yang memakai kode ini tidak terpengaruh.`)) return;
+    button.disabled = true;
+    try {
+      const res = await api(`/coupons/${c.id}`, { method: "DELETE" });
+      if (redirectIfUnauthorized(res)) return;
+      if (!res.ok && res.status !== 404) throw new Error(await errorMessage(res, "Gagal menghapus."));
+      coupons = coupons.filter((x) => x.id !== c.id);
+      render();
+      toast(`${c.code} dihapus.`);
+    } catch (err) {
+      button.disabled = false;
+      toast((err as Error).message, "error");
+    }
+  }
+
+  // Batas nilai mengikuti jenis diskon: persen 1-90, nominal bebas (minimal 1).
+  form.querySelectorAll('input[name="type"]').forEach((r) =>
+    r.addEventListener("change", () => {
+      const percent = (new FormData(form).get("type") as string) === "PERCENT";
+      $("#c-value-label").textContent = percent ? "Besar diskon (%)" : "Potongan harga (Rp)";
+      if (percent) valueInput.max = "90";
+      else valueInput.removeAttribute("max");
+    }),
+  );
+  const code = $<HTMLInputElement>("#c-code");
+  code.addEventListener("input", () => (code.value = code.value.toUpperCase().replace(/[^A-Z0-9]/g, "")));
+  form.addEventListener("input", () => formError.classList.add("hidden"));
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const showError = (m: string) => {
+      formError.textContent = m;
+      formError.classList.remove("hidden");
+    };
+    if (!form.checkValidity()) {
+      const invalid = form.querySelector<HTMLInputElement>(":invalid");
+      const label = invalid ? form.querySelector(`label[for="${invalid.id}"]`)?.textContent?.trim() : null;
+      showError(label ? `Periksa "${label}". ${invalid?.validationMessage ?? ""}` : "Periksa isian form.");
+      invalid?.focus();
+      return;
+    }
+    const data = new FormData(form);
+    const num = (k: string) => (String(data.get(k) ?? "") === "" ? null : Number(data.get(k)));
+    const exp = String(data.get("expiresAt") ?? "");
+    const payload = {
+      code: String(data.get("code")),
+      type: data.get("type"),
+      value: num("value"),
+      maxUses: num("maxUses"),
+      // Berlaku sampai akhir hari yang dipilih (WIB).
+      expiresAt: exp ? `${exp}T23:59:59+07:00` : null,
+    };
+    const button = form.querySelector<HTMLButtonElement>("button[type=submit]")!;
+    button.disabled = true;
+    button.textContent = "Menyimpan...";
+    try {
+      const res = await api("/coupons", { method: "POST", body: JSON.stringify(payload) });
+      if (redirectIfUnauthorized(res)) return;
+      if (!res.ok) return showError(await errorMessage(res, "Gagal menyimpan kode promo."));
+      const { coupon } = (await res.json()) as { coupon: Coupon };
+      coupons = [coupon, ...coupons];
+      render();
+      form.reset();
+      // Kembalikan label dan batas nilai ke jenis default (persen).
+      form.querySelector<HTMLInputElement>('input[value="PERCENT"]')!.dispatchEvent(new Event("change"));
+      toast(`Kode ${coupon.code} siap dipakai pembeli.`);
+    } catch {
+      showError("Tidak bisa terhubung ke server.");
+    } finally {
+      button.disabled = false;
+      button.textContent = "Simpan kode promo";
+    }
+  });
+
+  $("#retry").addEventListener("click", () => void load());
+  void load();
+</script>

@@ -118,13 +118,23 @@ const filters = [
     badge.className = `inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold tracking-wide ${BADGE[order.status].cls}`;
     badge.textContent = BADGE[order.status].label;
 
-    const total = cell("Total", formatRupiah(order.grossAmount));
+    const total = cell(
+      "Total",
+      formatRupiah(order.grossAmount),
+      ...(order.couponCode ? [muted(`${order.couponCode} -${formatRupiah(order.discountAmount ?? 0)}`)] : []),
+    );
     total.classList.add("md:text-right", "tabular-nums", "text-slate-100");
 
     tr.append(
       cell("Tanggal", formatDateTime(order.createdAt)),
       cell("Kode", order.orderCode),
-      cell("Produk", product, muted(`${order.quantity} pcs`), ...(order.note ? [muted(`Catatan: ${order.note}`)] : [])),
+      cell(
+        "Produk",
+        product,
+        muted(`${order.quantity} pcs`),
+        ...(order.digitalFileName ? [muted(`File: ${order.digitalFileName} (diunduh ${order.downloadCount ?? 0}x)`)] : []),
+        ...(order.note ? [muted(`Catatan: ${order.note}`)] : []),
+      ),
       cell("Pembeli", buyer, muted(order.buyerEmail)),
       total,
       cell("Status", badge, ...(order.paymentType ? [muted(order.paymentType.replace(/_/g, " "))] : [])),

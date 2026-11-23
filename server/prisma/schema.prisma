@@ -22,6 +22,7 @@ model User {
   items        Item[]
   orders       Order[]
   events       AnalyticsEvent[]
+  coupons      Coupon[]
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 }
@@ -33,21 +34,26 @@ type SocialLink {
 }
 
 model Item {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId      String   @db.ObjectId
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String   @db.ObjectId
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// "link" atau "product"
-  type        String   @default("product")
-  title       String
-  description String?
-  price       Int?     @default(0)
-  stock       Int?     @default(0)
-  url         String?
-  imageUrl    String?
-  orderIndex  Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  type            String   @default("product")
+  title           String
+  description     String?
+  price           Int?     @default(0)
+  stock           Int?     @default(0)
+  url             String?
+  imageUrl        String?
+  orderIndex      Int      @default(0)
+  isActive        Boolean  @default(true)
+  /// Produk digital: file dikirim (bisa diunduh dari struk) setelah pembayaran lunas.
+  isDigital       Boolean? @default(false)
+  /// Nama file di server/private-uploads. Tidak pernah dikirim ke endpoint publik.
+  digitalFileKey  String?
+  digitalFileName String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([userId, orderIndex])
 }
@@ -55,26 +61,35 @@ model Item {
 /// Pesanan lewat Midtrans Snap. Judul dan harga produk disalin saat checkout
 /// agar riwayat transaksi tetap utuh walau item diubah atau dihapus.
 model Order {
-  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
   /// order_id yang dikirim ke Midtrans
-  orderCode   String    @unique
-  userId      String    @db.ObjectId
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  itemId      String    @db.ObjectId
-  itemTitle   String
-  unitPrice   Int
-  quantity    Int
-  grossAmount Int
-  buyerName   String
-  buyerEmail  String
-  note        String?
+  orderCode       String    @unique
+  userId          String    @db.ObjectId
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId          String    @db.ObjectId
+  itemTitle       String
+  unitPrice       Int
+  quantity        Int
+  /// unitPrice x quantity, sebelum diskon
+  subtotal        Int?
+  couponCode      String?
+  discountAmount  Int?      @default(0)
+  /// Total yang dibayar (subtotal - diskon)
+  grossAmount     Int
+  buyerName       String
+  buyerEmail      String
+  note            String?
   /// PENDING | PAID | FAILED
-  status      String    @default("PENDING")
-  paymentType String?
-  snapToken   String?
-  paidAt      DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  status          String    @default("PENDING")
+  paymentType     String?
+  snapToken       String?
+  paidAt          DateTime?
+  /// Salinan file digital saat checkout, agar struk lama tetap mengunduh file yang dibeli.
+  digitalFileKey  String?
+  digitalFileName String?
+  downloadCount   Int?      @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([userId, createdAt])
 }
@@ -90,4 +105,24 @@ model AnalyticsEvent {
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+/// Kode promo milik penjual. Dipakai di checkout; jumlah pemakaian dihitung saat pesanan lunas.
+model Coupon {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String    @db.ObjectId
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Huruf kapital dan angka, unik per penjual
+  code      String
+  /// PERCENT (1-90) | FIXED (Rupiah)
+  type      String
+  value     Int
+  maxUses   Int?
+  usedCount Int       @default(0)
+  expiresAt DateTime?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([userId, code])
 }

@@ -85,6 +85,20 @@ const radioClass =
             <input type="hidden" name="imageUrl" id="f-image-url" />
             <button type="button" id="image-remove" class="btn-ghost mt-2 text-sm" hidden>Hapus gambar</button>
           </div>
+          <div class="mt-4 rounded-2xl border border-white/10 p-3">
+            <label class="flex min-h-11 items-center gap-3 text-sm text-slate-200">
+              <input type="checkbox" id="f-digital" class="size-4 shrink-0 accent-indigo-400" />
+              Produk digital (pembeli mengunduh file setelah lunas)
+            </label>
+            <div id="f-digital-fields" hidden class="mt-1">
+              <p id="f-digital-name" class="text-sm text-slate-300 break-all">Belum ada file.</p>
+              <label for="f-digital-file" class="btn-ghost mt-2 text-sm has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-indigo-300">
+                <span id="f-digital-label">Unggah file</span>
+                <input id="f-digital-file" type="file" accept=".pdf,.zip,.epub,.mp3,.mp4,.jpg,.jpeg,.png,.txt" class="sr-only" />
+              </label>
+              <p class="mt-1.5 text-xs text-slate-400">PDF, ZIP, EPUB, MP3, MP4, JPG, PNG, atau TXT, maks. 25 MB. Tiap pesanan bisa mengunduh 10 kali. Kosongkan Stok agar tanpa batas.</p>
+            </div>
+          </div>
         </div>
 
         <p id="form-status" role="status" class="mt-4 hidden rounded-xl border px-3 py-2 text-sm"></p>
@@ -197,6 +211,20 @@ const radioClass =
                   </div>
                   <input type="hidden" name="imageUrl" id="e-image-url" />
                 </div>
+          <div class="mt-4 rounded-2xl border border-white/10 p-3">
+            <label class="flex min-h-11 items-center gap-3 text-sm text-slate-200">
+              <input type="checkbox" id="e-digital" class="size-4 shrink-0 accent-indigo-400" />
+              Produk digital (pembeli mengunduh file setelah lunas)
+            </label>
+            <div id="e-digital-fields" hidden class="mt-1">
+              <p id="e-digital-name" class="text-sm text-slate-300 break-all">Belum ada file.</p>
+              <label for="e-digital-file" class="btn-ghost mt-2 text-sm has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-indigo-300">
+                <span id="e-digital-label">Unggah file</span>
+                <input id="e-digital-file" type="file" accept=".pdf,.zip,.epub,.mp3,.mp4,.jpg,.jpeg,.png,.txt" class="sr-only" />
+              </label>
+              <p class="mt-1.5 text-xs text-slate-400">PDF, ZIP, EPUB, MP3, MP4, JPG, PNG, atau TXT, maks. 25 MB. Tiap pesanan bisa mengunduh 10 kali.</p>
+            </div>
+          </div>
               </div>
             </div>
 
@@ -215,7 +243,7 @@ const radioClass =
 
 <script>
   import { errorMessage, formatRupiah } from "../../lib/api";
-  import { api, redirectIfUnauthorized, showState, uploadImage } from "../../lib/client";
+  import { api, redirectIfUnauthorized, showState, uploadDigital, uploadImage } from "../../lib/client";
   import { toast } from "../../lib/toast";
   import type { DashboardItem, ItemType } from "../../types/store";
 
@@ -267,7 +295,12 @@ const radioClass =
         if (!item.isActive) node.dataset.inactive = "";
 
         fillThumb(field("thumb"), item);
-        field("type").textContent = item.type === "link" ? "Tautan" : "Produk";
+        field("type").textContent =
+          item.type === "link"
+            ? "Tautan"
+            : item.isDigital
+              ? `Produk digital · ${item.digitalFileName ?? "file belum diunggah"}`
+              : "Produk";
         field("title").textContent = item.title;
 
         const meta = field("meta");
@@ -401,6 +434,63 @@ const radioClass =
     }
   }
 
+  // --- Produk digital (dipakai form tambah dan modal edit)
+  function digitalControl(prefix: "f" | "e") {
+    const box = $<HTMLInputElement>(`#${prefix}-digital`);
+    const fields = $<HTMLElement>(`#${prefix}-digital-fields`);
+    const nameEl = $<HTMLElement>(`#${prefix}-digital-name`);
+    const labelEl = $<HTMLElement>(`#${prefix}-digital-label`);
+    const fileInput = $<HTMLInputElement>(`#${prefix}-digital-file`);
+    let key: string | null = null;
+    let name: string | null = null;
+    let uploading = false;
+
+    const render = () => {
+      fields.hidden = !box.checked;
+      nameEl.textContent = name ? `File: ${name}` : "Belum ada file.";
+      labelEl.textContent = uploading ? "Mengunggah..." : name ? "Ganti file" : "Unggah file";
+    };
+    box.addEventListener("change", render);
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      uploading = true;
+      render();
+      try {
+        ({ fileKey: key, fileName: name } = await uploadDigital(file));
+        toast(`${name} terunggah.`);
+      } catch (err) {
+        toast((err as Error).message, "error");
+      } finally {
+        uploading = false;
+        fileInput.value = "";
+        render();
+      }
+    });
+
+    return {
+      get uploading() {
+        return uploading;
+      },
+      /** Pesan error jika produk digital belum punya file, selain itu null. */
+      problem: () => (uploading ? "Tunggu file selesai diunggah." : box.checked && !key ? "Unggah file produk digital dulu." : null),
+      value: () => ({ isDigital: box.checked, digitalFileKey: box.checked ? key : null, digitalFileName: box.checked ? name : null }),
+      set(item: DashboardItem) {
+        box.checked = Boolean(item.isDigital);
+        key = item.digitalFileKey;
+        name = item.digitalFileName;
+        render();
+      },
+      reset() {
+        box.checked = false;
+        key = name = null;
+        render();
+      },
+    };
+  }
+  const createDigital = digitalControl("f");
+  const editDigital = digitalControl("e");
+
   // --- Modal edit
   const editDialog = $<HTMLDialogElement>("#edit-dialog");
   const editForm = $<HTMLFormElement>("#edit-form");
@@ -440,6 +530,7 @@ const radioClass =
     field("e-stock").value = item.stock?.toString() ?? "";
     $<HTMLElement>("#e-product-fields").hidden = isLink;
     showEditImage(item.imageUrl ?? "");
+    editDigital.set(item);
     showEditError(null);
     editDialog.showModal();
     field("e-title").focus();
@@ -492,6 +583,10 @@ const radioClass =
       return;
     }
 
+    if (editing.item.type === "product" && editDigital.problem()) {
+      showEditError(editDigital.problem());
+      return;
+    }
     const { item } = editing;
     const value = (id: string) => field(id).value.trim();
     const number = (id: string) => (value(id) === "" ? undefined : Number(value(id)));
@@ -500,7 +595,12 @@ const radioClass =
       title: value("e-title"),
       description: value("e-description"),
       url: value("e-url"),
-      ...(item.type === "product" && { price: number("e-price"), stock: number("e-stock"), imageUrl: eImageUrl.value }),
+      ...(item.type === "product" && {
+        price: number("e-price"),
+        stock: number("e-stock"),
+        imageUrl: eImageUrl.value,
+        ...editDigital.value(),
+      }),
     };
 
     editSave.disabled = true;
@@ -612,6 +712,10 @@ const radioClass =
       return;
     }
 
+    if ((new FormData(form).get("type") as ItemType) === "product" && createDigital.problem()) {
+      showStatus(createDigital.problem()!, "error");
+      return;
+    }
     const data = new FormData(form);
     const type = data.get("type") as ItemType;
     const text = (key: string) => String(data.get(key) ?? "").trim() || undefined;
@@ -624,6 +728,7 @@ const radioClass =
         price: text("price") ? Number(text("price")) : undefined,
         stock: text("stock") ? Number(text("stock")) : undefined,
         imageUrl: text("imageUrl"),
+        ...createDigital.value(),
       }),
     };
 
@@ -638,6 +743,7 @@ const radioClass =
       }
       form.reset();
       resetImage();
+      createDigital.reset();
       syncType();
       showStatus(`"${payload.title}" tersimpan.`, "ok");
       await loadItems();
