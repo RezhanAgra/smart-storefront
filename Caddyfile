@@ -1,0 +1,32 @@
+# Gerbang HTTP/HTTPS. Dengan domain asli, Caddy mengambil sertifikat Let's Encrypt otomatis.
+# Dengan DOMAIN_NAME kosong (localhost), Caddy memakai sertifikat lokal untuk uji coba.
+{
+	# Email untuk notifikasi Let's Encrypt (sertifikat hampir kedaluwarsa, dsb.).
+	email {$ACME_EMAIL:admin@localhost}
+}
+
+{$DOMAIN_NAME:localhost} {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# Upload file produk digital maksimal 25 MB; beri sedikit ruang untuk overhead multipart.
+	request_body {
+		max_size 30MB
+	}
+
+	@backend path /api/* /uploads/*
+	handle @backend {
+		reverse_proxy server:5000
+	}
+
+	handle {
+		reverse_proxy client:4321
+	}
+}

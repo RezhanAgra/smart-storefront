@@ -28,9 +28,21 @@ export async function errorMessage(res: Response, fallback: string): Promise<str
  */
 export function ssrFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
-  const key = import.meta.env.INTERNAL_API_KEY;
+  const key = serverEnv("INTERNAL_API_KEY");
   if (key) headers.set("x-internal-key", key);
-  return fetch(`${API_URL}${path}`, { ...init, headers });
+  // Di Docker, SSR memanggil API lewat jaringan internal (http://server:5000), bukan lewat domain publik.
+  const base = (serverEnv("INTERNAL_API_URL") || API_URL).replace(/\/$/, "");
+  return fetch(`${base}${path}`, { ...init, headers });
+}
+
+/**
+ * Variabel khusus server dibaca saat runtime dari process.env, supaya rahasia tidak ikut di-bake ke image
+ * saat build. Fallback ke import.meta.env untuk `astro dev` yang membaca client/.env.
+ */
+function serverEnv(name: "INTERNAL_API_KEY" | "INTERNAL_API_URL"): string | undefined {
+  const runtime = typeof process !== "undefined" ? process.env[name] : undefined;
+  if (runtime) return runtime;
+  return name === "INTERNAL_API_KEY" ? import.meta.env.INTERNAL_API_KEY : import.meta.env.INTERNAL_API_URL;
 }
 
 /** Cek sesi di sisi server Astro memakai cookie `token` milik browser. */

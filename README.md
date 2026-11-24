@@ -147,6 +147,107 @@ Username `login`, `logout`, `register`, `dashboard`, `order`, `demo`, `api`, `ad
   - Request SSR dari server Astro yang membawa header `x-internal-key`. Tanpa pengecualian ini, semua pengunjung halaman toko terlihat sebagai satu IP (IP server Astro), dan batas 100 request habis dalam hitungan menit.
 - Jika API dijalankan lebih dari satu instance, pindahkan penyimpanan rate limit ke Redis (`rate-limit-redis`).
 
+## Panduan Deployment Produksi ke VPS (Docker + Caddy SSL)
+
+Arsitektur: satu domain, empat container di jaringan internal `smart_net`. Hanya Caddy yang membuka port ke internet.
+
+```
+Internet ──443/80──▶ caddy ──/api/*, /uploads/*──▶ server:5000 ──▶ mongo:27017 (replica set rs0)
+                          └──────── selain itu ───▶ client:4321 ──(SSR, x-internal-key)──▶ server:5000
+```
+
+| File | Isi |
+| --- | --- |
+| `server/Dockerfile` | Multi-stage: `builder` (npm ci, prisma generate, tsc) dan `runner` (dependensi produksi, user `node`, healthcheck `/api/health`) |
+| `client/Dockerfile` | Multi-stage: `builder` (astro build dengan build-arg `PUBLIC_API_URL`, `SITE_URL`) dan `runner` (user `node`, `node ./dist/server/entry.mjs`) |
+| `Caddyfile` | HTTPS otomatis Let's Encrypt, routing, kompresi zstd/gzip, security header |
+| `docker-compose.prod.yml` | `mongo`, `server`, `client`, `caddy`, plus `migrate` (profil `tools`) |
+| `.env.prod.example` | Semua variabel produksi |
+
+### 1. Siapkan VPS
+
+Ubuntu 22.04/24.04 atau Debian 12, minimal 2 GB RAM (build image Astro butuh memori). Instal Docker Engine dan plugin Compose sesuai https://docs.docker.com/engine/install/, lalu buka port 80 dan 443:
+
+```bash
+sudo ufw allow OpenSSH && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp && sudo ufw allow 443/udp && sudo ufw enable
+```
+
+### 2. Arahkan DNS ke VPS
+
+Di panel DNS domain, buat **A record** (dan **AAAA** jika VPS punya IPv6):
+
+| Type | Name | Value |
+| --- | --- | --- |
+| A | `@` (atau subdomain, misalnya `toko`) | IP publik VPS |
+
+Tunggu sampai `dig +short tokoku.id` menampilkan IP VPS. Caddy baru bisa mengambil sertifikat setelah DNS mengarah ke VPS dan port 80/443 terbuka.
+
+### 3. Isi environment
+
+```bash
+git clone <repo> smart-storefront && cd smart-storefront
+cp .env.prod.example .env.prod
+nano .env.prod   # isi DOMAIN_NAME, ACME_EMAIL, CLIENT_URL, SERVER_PUBLIC_URL (= https://DOMAIN_NAME)
+openssl rand -hex 32   # jalankan dua kali: untuk JWT_SECRET dan INTERNAL_API_KEY
+```
+
+Catatan:
+- `PUBLIC_API_URL` tidak perlu diisi: compose menyusunnya dari `DOMAIN_NAME` (`https://DOMAIN_NAME`, tanpa `/api`, karena client menambahkan `/api` sendiri).
+- `INTERNAL_API_KEY` dibaca client saat runtime, tidak di-bake ke image.
+
+### 4. Build dan jalankan
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+
+# Sekali setelah deploy pertama (dan setiap kali schema.prisma berubah): buat index unik MongoDB.
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm migrate
+
+# Opsional: toko contoh untuk tautan "Akun Demo" di landing page.
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm migrate npm run seed
+```
+
+Cek status dan log:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod ps
+docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f caddy server
+curl https://tokoku.id/api/health
+```
+
+### 5. Webhook Midtrans
+
+Di dashboard Midtrans (**Settings > Payment > Notification URL**), isi:
+
+```
+https://tokoku.id/api/payments/midtrans/notification
+```
+
+Endpoint ini memverifikasi `signature_key` dengan `MIDTRANS_SERVER_KEY` dan tidak terkena rate limit. Untuk transaksi sungguhan, pakai key produksi dan set `MIDTRANS_IS_PRODUCTION=true`.
+
+### Update dan backup
+
+```bash
+git pull && docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm migrate   # jika schema berubah
+
+# Backup database dan file upload
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T mongo mongodump --archive --gzip > backup-$(date +%F).gz
+docker run --rm -v smart-storefront-prod_uploads_prod_data:/u -v smart-storefront-prod_private_uploads_prod_data:/p -v "$PWD":/b alpine tar czf /b/files-$(date +%F).tgz /u /p
+```
+
+Volume persisten: `mongo_prod_data`, `uploads_prod_data` (gambar), `private_uploads_prod_data` (file produk digital), `caddy_data` (sertifikat SSL).
+
+### Uji di komputer sendiri
+
+Dengan `DOMAIN_NAME=localhost`, Caddy memakai sertifikat lokal (browser menampilkan peringatan, atau jalankan `docker compose ... exec caddy caddy trust`). Port 80 dan 443 harus kosong.
+
+### Yang perlu diketahui
+
+- MongoDB berjalan tanpa autentikasi, tetapi hanya bisa diakses dari jaringan internal Docker (tidak ada port yang dibuka ke host). Jika MongoDB dipindah ke server lain atau dibuka ke luar, aktifkan autentikasi dan keyFile replica set.
+- Rate limit disimpan di memori proses `server`: reset saat container restart, dan tidak dibagi jika `server` dijalankan lebih dari satu replika.
+- `trust proxy` = 1 sesuai satu Caddy di depan API. Caddy mengganti `X-Forwarded-For` kiriman klien, jadi header palsu tidak bisa dipakai untuk menghindari rate limit.
+
 ## Badge verifikasi
 
 Badge centang di halaman toko hanya tampil jika `User.isVerified` bernilai `true` (default `false`). Belum ada UI admin. Ubah langsung di database:
