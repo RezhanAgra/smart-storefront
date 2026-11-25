@@ -135,6 +135,48 @@ const platforms = ["Instagram", "TikTok", "WhatsApp", "Shopee", "Tokopedia", "Yo
         <p id="form-error" role="alert" class="text-sm text-rose-200"></p>
       </div>
     </form>
+
+    <h2 class="mt-12 text-xl font-bold">Akun</h2>
+    <p class="mt-1 text-sm text-slate-400">Masuk sebagai {user.email}</p>
+
+    <form id="password-form" class="glass-card mt-4 space-y-4 rounded-2xl p-5 sm:p-8" novalidate aria-labelledby="password-heading">
+      <h3 id="password-heading" class="text-lg font-bold">Ganti password</h3>
+      <div>
+        <label for="current-password" class="label">Password saat ini</label>
+        <input id="current-password" type="password" autocomplete="current-password" required class="glass-input mt-1" />
+      </div>
+      <div>
+        <label for="new-password" class="label">Password baru</label>
+        <input id="new-password" type="password" autocomplete="new-password" required minlength="8" aria-describedby="new-password-hint" class="glass-input mt-1" />
+        <p id="new-password-hint" class="mt-1.5 text-sm text-slate-400">Minimal 8 karakter.</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <button type="submit" class="btn-ghost">Ganti password</button>
+        <p role="alert" data-error class="text-sm text-rose-200"></p>
+      </div>
+    </form>
+
+    <form id="delete-form" class="mt-6 space-y-4 rounded-2xl border border-rose-400/30 bg-rose-500/[0.06] p-5 sm:p-8" novalidate aria-labelledby="delete-heading">
+      <h3 id="delete-heading" class="text-lg font-bold">Hapus akun</h3>
+      <p class="text-sm text-slate-300">
+        Halaman <span class="font-medium text-white">/{user.username}</span>, semua produk, riwayat pesanan, kode promo, analitik, dan file produk digital ikut terhapus permanen.
+        Pembeli lama tidak bisa lagi membuka struk atau mengunduh file. Tidak bisa dibatalkan.
+      </p>
+      <div>
+        <label for="delete-confirm" class="label">Ketik username <span class="font-mono text-white">{user.username}</span> untuk konfirmasi</label>
+        <input id="delete-confirm" autocomplete="off" autocapitalize="none" spellcheck="false" required pattern={user.username} class="glass-input mt-1" />
+      </div>
+      <div>
+        <label for="delete-password" class="label">Password</label>
+        <input id="delete-password" type="password" autocomplete="current-password" required class="glass-input mt-1" />
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <button type="submit" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-rose-700 px-5 font-semibold text-white transition-colors hover:bg-rose-600 active:translate-y-px disabled:opacity-50">
+          Hapus akun permanen
+        </button>
+        <p role="alert" data-error class="text-sm text-rose-200"></p>
+      </div>
+    </form>
   </main>
 </Base>
 
@@ -313,4 +355,70 @@ const platforms = ["Instagram", "TikTok", "WhatsApp", "Shopee", "Tokopedia", "Yo
       save.textContent = "Simpan perubahan";
     }
   });
+
+  /** Form akun kecil: validasi bawaan browser, kirim, tampilkan error di [data-error]. */
+  function accountForm(
+    form: HTMLFormElement,
+    busyLabel: string,
+    request: () => Promise<Response>,
+    onDone: () => void,
+    invalidMessage?: (el: HTMLInputElement) => string | undefined,
+  ) {
+    const button = form.querySelector<HTMLButtonElement>("button[type=submit]")!;
+    const error = form.querySelector<HTMLElement>("[data-error]")!;
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      error.textContent = "";
+      if (!form.checkValidity()) {
+        const invalid = form.querySelector<HTMLInputElement>(":invalid")!;
+        const label = form.querySelector(`label[for="${invalid.id}"]`)?.textContent?.trim();
+        error.textContent = invalidMessage?.(invalid) ?? `Periksa "${label}". ${invalid.validationMessage}`;
+        invalid.focus();
+        return;
+      }
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = busyLabel;
+      try {
+        const res = await request();
+        if (redirectIfUnauthorized(res)) return;
+        if (!res.ok) {
+          error.textContent = await errorMessage(res, "Gagal memproses. Coba lagi.");
+          return;
+        }
+        onDone();
+      } catch {
+        error.textContent = "Tidak bisa terhubung ke server.";
+      } finally {
+        button.disabled = false;
+        button.textContent = original;
+      }
+    });
+  }
+
+  const passwordForm = $<HTMLFormElement>("#password-form");
+  accountForm(
+    passwordForm,
+    "Menyimpan...",
+    () =>
+      api("/auth/password", {
+        method: "PUT",
+        body: JSON.stringify({
+          currentPassword: $<HTMLInputElement>("#current-password").value,
+          newPassword: $<HTMLInputElement>("#new-password").value,
+        }),
+      }),
+    () => {
+      passwordForm.reset();
+      toast("Password berhasil diganti.");
+    },
+  );
+
+  accountForm(
+    $<HTMLFormElement>("#delete-form"),
+    "Menghapus...",
+    () => api("/auth/account", { method: "DELETE", body: JSON.stringify({ password: $<HTMLInputElement>("#delete-password").value }) }),
+    () => location.assign("/"),
+    (el) => (el.id === "delete-confirm" ? "Username yang diketik belum sama." : undefined),
+  );
 </script>

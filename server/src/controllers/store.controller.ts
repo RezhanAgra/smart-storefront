@@ -46,3 +46,15 @@ export async function getStore(req: Request, res: Response): Promise<void> {
 
   res.json({ ...store, payments });
 }
+
+/** GET /api/store: username toko yang punya minimal satu item aktif, untuk sitemap.xml. */
+export async function listStores(_req: Request, res: Response): Promise<void> {
+  const active = await prisma.item.findMany({ where: { isActive: true }, distinct: ["userId"], select: { userId: true } });
+  const stores = await prisma.user.findMany({
+    where: { id: { in: active.map((i) => i.userId) } },
+    select: { username: true, updatedAt: true },
+    orderBy: { updatedAt: "desc" },
+    take: 5000,
+  });
+  res.json({ stores });
+}

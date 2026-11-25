@@ -1,0 +1,49 @@
+---
+import LegalPage from "../components/LegalPage.astro";
+import { siteOperator } from "../lib/site";
+
+const op = siteOperator();
+---
+
+<LegalPage title="Syarat & Ketentuan" description="Aturan memakai smart-storefront untuk penjual dan pembeli." updated="25 November 2026">
+  <p>
+    smart-storefront adalah layanan halaman link-in-bio dan etalase produk yang dikelola oleh {op.name}. Dengan membuat akun atau membeli di
+    halaman toko, kamu setuju dengan syarat di bawah.
+  </p>
+
+  <h2>Akun penjual</h2>
+  <ul>
+    <li>Kamu bertanggung jawab menjaga kerahasiaan password dan semua aktivitas di akunmu.</li>
+    <li>Username dipakai sebagai alamat toko dan harus tidak menyesatkan atau meniru pihak lain.</li>
+    <li>Kamu bisa menghapus akun kapan saja dari halaman Pengaturan.</li>
+  </ul>
+
+  <h2>Yang dijual</h2>
+  <p>Penjual bertanggung jawab penuh atas produk, deskripsi, harga, stok, dan pengiriman barangnya. Dilarang menjual atau menautkan:</p>
+  <ul>
+    <li>barang atau jasa yang melanggar hukum Indonesia, termasuk narkotika, senjata, perjudian, dan konten pornografi;</li>
+    <li>barang palsu atau konten yang melanggar hak cipta dan merek orang lain;</li>
+    <li>skema investasi, penipuan, atau produk yang menyesatkan pembeli.</li>
+  </ul>
+  <p>Kami dapat menyembunyikan item atau menonaktifkan toko yang melanggar aturan ini, dengan atau tanpa pemberitahuan lebih dulu.</p>
+
+  <h2>Pembayaran</h2>
+  <ul>
+    <li>Pembayaran online diproses oleh Midtrans. Pesanan dianggap lunas setelah Midtrans mengonfirmasi pembayaran.</li>
+    <li>Harga yang dibayar adalah harga saat checkout, termasuk potongan kode promo jika ada.</li>
+    <li>Produk digital bisa diunduh dari struk pesanan setelah lunas, maksimal 10 kali per pesanan.</li>
+    <li>Pengembalian dana diatur di <a href="/kebijakan-refund">Kebijakan Refund</a>.</li>
+  </ul>
+
+  <h2>Batas tanggung jawab</h2>
+  <p>
+    Transaksi jual beli terjadi antara pembeli dan penjual. Kami menyediakan halaman toko dan proses pembayaran, tetapi tidak menjamin kualitas,
+    keaslian, atau pengiriman barang penjual. Layanan disediakan apa adanya, dan kami berusaha menjaganya tetap berjalan tanpa menjanjikan
+    ketersediaan tanpa gangguan.
+  </p>
+
+  <h2>Perubahan</h2>
+  <p>Jika syarat ini berubah, tanggal di bagian atas halaman ikut diperbarui. Memakai layanan setelah tanggal itu berarti menyetujui versi baru.</p>
+
+  <p>Data pribadi diatur terpisah di <a href="/kebijakan-privasi">Kebijakan Privasi</a>.</p>
+</LegalPage>

@@ -65,6 +65,8 @@ cd client && npx astro check && npm run build && npm start
 | `CLIENT_URL` | `http://localhost:4321` (origin yang diizinkan CORS) |
 | `SERVER_PUBLIC_URL` | `http://localhost:5000` (untuk URL gambar hasil upload; production: `https://api.domainmu.id`) |
 | `INTERNAL_API_KEY` | string acak panjang, harus sama dengan di `client/.env` (lihat "Keamanan") |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | server SMTP. `SMTP_HOST` kosong = email nonaktif |
+| `MAIL_FROM` | `SmartStorefront <noreply@domainmu.id>` |
 | `MIDTRANS_SERVER_KEY` | kosong = checkout nonaktif |
 | `MIDTRANS_CLIENT_KEY` | kosong = checkout nonaktif |
 | `MIDTRANS_IS_PRODUCTION` | `false` untuk sandbox |
@@ -76,6 +78,8 @@ cd client && npx astro check && npm run build && npm start
 | `PUBLIC_API_URL` | `http://localhost:5000` |
 | `SITE_URL` | `http://localhost:4321` (untuk canonical, `og:url`, dan alamat toko yang ditampilkan) |
 | `INTERNAL_API_KEY` | sama dengan di `server/.env`. Hanya dibaca saat SSR, tidak pernah masuk ke bundle browser |
+| `SITE_OPERATOR_NAME` | nama orang atau badan usaha pengelola, tampil di halaman legal. Kosong = penanda `[ISI ...]` |
+| `SITE_CONTACT_EMAIL` | email kontak untuk refund dan privasi, tampil di halaman legal |
 
 Gambar hasil upload disimpan di `server/uploads/` (tidak masuk git). Untuk production, pindahkan ke object storage.
 
@@ -87,12 +91,17 @@ Gambar hasil upload disimpan di `server/uploads/` (tidak masuk git). Untuk produ
 | POST | `/api/auth/login` | | `email`, `password` |
 | POST | `/api/auth/logout` | | Hapus cookie |
 | GET | `/api/auth/me` | ya | Profil user yang login |
+| PUT | `/api/auth/password` | ya | `currentPassword`, `newPassword` (min 8) |
+| DELETE | `/api/auth/account` | ya | `password`. Hapus user beserta item, pesanan, analitik, kupon, dan file digitalnya |
+| POST | `/api/auth/forgot-password` | | `email`. Kirim tautan reset (berlaku 1 jam). 503 jika SMTP belum diatur |
+| POST | `/api/auth/reset-password` | | `token` (dari email), `password`. Token sekali pakai |
 | GET | `/api/items` | ya | Item milik user, urut `orderIndex` |
 | POST | `/api/items` | ya | `type` (`link`/`product`), `title`, `description`, `price`, `stock`, `url`, `imageUrl` |
 | PUT/DELETE | `/api/items/:id` | ya | Hanya item milik sendiri (selain itu 404). `PUT` juga untuk `isActive` |
 | PATCH | `/api/items/reorder` | ya | Body `[{ id, orderIndex }]`, diterapkan dalam satu `prisma.$transaction` |
 | PUT | `/api/auth/profile` | ya | Divalidasi Zod: `displayName`, `bio` (maks. 250), `avatarUrl`, `themeColor` (hex), `socialLinks` (array atau JSON string `{ platform, url }`, maks. 8) |
 | POST | `/api/uploads` | ya | Multipart field `image`, JPG/PNG/WebP maks. 2 MB → `{ url }` |
+| GET | `/api/store` | | Username toko yang punya item aktif (untuk `sitemap.xml`) |
 | GET | `/api/store/:username` | | Profil publik, item aktif, dan status pembayaran (`payments.enabled`, client key) |
 | POST | `/api/store/:username/events?type=view\|click&itemId=` | | Catat kunjungan atau klik (tanpa body) |
 | POST | `/api/checkout` | | `itemId`, `quantity`, `buyerName`, `buyerEmail`, `note` → token Snap |
@@ -118,6 +127,9 @@ Username `login`, `logout`, `register`, `dashboard`, `order`, `demo`, `api`, `ad
 | --- | --- |
 | `/` | Landing |
 | `/login` | Masuk dan daftar |
+| `/lupa-password`, `/reset-password` | Minta dan pakai tautan reset password |
+| `/syarat-ketentuan`, `/kebijakan-privasi`, `/kebijakan-refund` | Halaman legal (dibutuhkan Midtrans untuk aktivasi akun produksi) |
+| `/robots.txt`, `/sitemap.xml` | SEO. Sitemap berisi halaman legal dan semua toko yang punya item aktif |
 | `/<username>` | Halaman toko publik. `/@<username>` dialihkan permanen ke sini |
 | `/demo` | Toko contoh dari `npm run seed`. Checkout untuk akun ini ditolak server |
 | `/order/<orderCode>` | Struk dan status pembayaran pembeli (bisa dicetak/disimpan PDF) |
@@ -126,13 +138,13 @@ Username `login`, `logout`, `register`, `dashboard`, `order`, `demo`, `api`, `ad
 | `/dashboard/orders` | Riwayat transaksi (termasuk kode promo dan unduhan file) |
 | `/dashboard/promo` | Kode promo: buat, aktif/nonaktif, hapus, lihat pemakaian |
 | `/dashboard/qr` | QR Code kasir menuju halaman toko: cetak poster, unduh PNG/SVG |
-| `/dashboard/settings` | Foto profil, nama toko, bio, warna aksen, tautan sosial |
+| `/dashboard/settings` | Foto profil, nama toko, bio, warna aksen, tautan sosial, ganti password, hapus akun |
 
 ## Kode promo dan produk digital
 
 - Diskon dikirim ke Midtrans sebagai baris item berharga negatif, sehingga jumlah item sama dengan `gross_amount`. Diskon tidak boleh menghabiskan seluruh harga (Midtrans menolak total 0).
 - `usedCount` kupon bertambah saat pesanan menjadi `PAID`, bukan saat checkout. Pesanan `PENDING` yang bersamaan bisa membuat kuota terlewati sedikit.
-- File produk digital disimpan di `server/private-uploads/` (tidak masuk git, tidak disajikan `express.static`). Pembeli mengunduh lewat tombol di struk `/order/<kode>` setelah lunas. Belum ada pengiriman lewat email.
+- File produk digital disimpan di `server/private-uploads/` (tidak masuk git, tidak disajikan `express.static`). Pembeli mengunduh lewat tombol di struk `/order/<kode>` setelah lunas. Tautan struk juga dikirim ke email pembeli jika SMTP diatur.
 - Untuk production, pindahkan `uploads/` dan `private-uploads/` ke object storage (misalnya S3 dengan URL bertanda tangan).
 
 ## Keamanan
@@ -187,7 +199,7 @@ Tunggu sampai `dig +short tokoku.id` menampilkan IP VPS. Caddy baru bisa mengamb
 ```bash
 git clone <repo> smart-storefront && cd smart-storefront
 cp .env.prod.example .env.prod
-nano .env.prod   # isi DOMAIN_NAME, ACME_EMAIL, CLIENT_URL, SERVER_PUBLIC_URL (= https://DOMAIN_NAME)
+nano .env.prod   # isi DOMAIN_NAME, ACME_EMAIL, CLIENT_URL, SERVER_PUBLIC_URL (= https://DOMAIN_NAME), SMTP_*, SITE_OPERATOR_NAME, SITE_CONTACT_EMAIL
 openssl rand -hex 32   # jalankan dua kali: untuk JWT_SECRET dan INTERNAL_API_KEY
 ```
 
@@ -256,8 +268,19 @@ Badge centang di halaman toko hanya tampil jika `User.isVerified` bernilai `true
 mongosh smart_storefront --eval 'db.User.updateOne({username:"namatoko"},{$set:{isVerified:true}})'
 ```
 
-## Yang belum ada
+## Email
 
-- Mengosongkan harga atau stok produk lewat form edit (field kosong berarti "tidak diubah").
-- Email konfirmasi ke pembeli dari aplikasi ini.
-- Logo dan favicon resmi. Saat ini wordmark teks dan avatar inisial dipakai sebagai placeholder.
+Dengan `SMTP_HOST` dan `MAIL_FROM` terisi (`GET /api/health` menampilkan `"email": true`):
+
+- Pembeli menerima struk dan tautan unduhan saat pesanan pertama kali menjadi `PAID`.
+- Penjual menerima notifikasi pesanan lunas. `Reply-To` diisi email pembeli, jadi penjual bisa langsung membalas.
+- Lupa password mengirim tautan reset sekali pakai yang berlaku 1 jam. Yang disimpan di database hanya hash SHA-256 token.
+
+Email pesanan dikirim di latar belakang. Jika gagal, pesanan tetap lunas dan error hanya dicatat di log server. Pakai penyedia SMTP transaksional (misalnya Brevo, Mailgun, Amazon SES), lalu atur SPF dan DKIM domain pengirim agar email tidak masuk spam.
+
+## Sebelum rilis
+
+- **Pencairan dana ke penjual belum ada.** Semua pembayaran masuk ke satu akun Midtrans milik pengelola situs. Belum ada saldo penjual, data rekening, atau penarikan dana.
+- Isi `SITE_OPERATOR_NAME` dan `SITE_CONTACT_EMAIL`, lalu minta orang yang paham hukum meninjau teks halaman legal, terutama batas waktu di Kebijakan Refund.
+- Sesi login lama (JWT, 7 hari) tetap berlaku setelah ganti atau reset password, karena token tidak dicek ke database.
+- Tidak ada UI admin: badge verifikasi diatur lewat database, dan toko yang melanggar dinonaktifkan manual.

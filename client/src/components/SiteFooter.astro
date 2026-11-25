@@ -8,6 +8,11 @@ const links = [
   // Toko contoh dari `npm run seed` di server.
   { href: "/demo", label: "Akun Demo" },
 ];
+const legal = [
+  { href: "/syarat-ketentuan", label: "Syarat & Ketentuan" },
+  { href: "/kebijakan-privasi", label: "Kebijakan Privasi" },
+  { href: "/kebijakan-refund", label: "Kebijakan Refund" },
+];
 ---
 
 <footer class="mx-auto max-w-5xl px-5 pb-10 pt-6">
@@ -30,5 +35,20 @@ const links = [
       </ul>
     </nav>
   </div>
-  <p class="mt-6 text-xs text-slate-400">&copy; {year} SmartStorefront</p>
+  <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <p class="text-xs text-slate-400">&copy; {year} SmartStorefront</p>
+    <nav aria-label="Kebijakan">
+      <ul class="-mx-2 flex flex-wrap">
+        {
+          legal.map((l) => (
+            <li>
+              <a href={l.href} class="inline-flex min-h-11 items-center rounded-lg px-2 text-xs text-slate-400 hover:bg-white/[0.06] hover:text-white">
+                {l.label}
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </nav>
+  </div>
 </footer>

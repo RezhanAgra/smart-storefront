@@ -18,6 +18,9 @@ model User {
   themeColor   String           @default("#0f172a")
   /// Diisi manual oleh admin. Badge verifikasi di halaman toko hanya tampil jika true.
   isVerified   Boolean          @default(false)
+  /// SHA-256 dari token reset password (token aslinya hanya ada di email). Berlaku 1 jam.
+  resetTokenHash    String?
+  resetTokenExpires DateTime?
   socialLinks  SocialLink[]
   items        Item[]
   orders       Order[]

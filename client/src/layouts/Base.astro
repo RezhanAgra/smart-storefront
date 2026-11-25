@@ -26,8 +26,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? Astro.url).href;
     {description && <meta name="description" content={description} />}
     {noindex && <meta name="robots" content="noindex" />}
     <link rel="canonical" href={canonical} />
-    <!-- Belum ada ikon resmi. Ikon kosong mencegah request favicon.ico yang 404. Ganti saat logo tersedia. -->
-    <link rel="icon" href="data:," />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <meta name="theme-color" content="#070913" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />

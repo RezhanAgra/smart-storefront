@@ -1,0 +1,55 @@
+---
+/** Kerangka halaman legal: teks panjang dengan lebar baca nyaman, tanpa kartu kaca. */
+import Base from "../layouts/Base.astro";
+import SiteHeader from "./SiteHeader.astro";
+import SiteFooter from "./SiteFooter.astro";
+import { siteOperator } from "../lib/site";
+
+interface Props {
+  title: string;
+  description: string;
+  /** Tanggal berlaku, format "25 November 2026". */
+  updated: string;
+}
+const { title, description, updated } = Astro.props;
+const op = siteOperator();
+---
+
+<Base title={`${title} | smart-storefront`} description={description}>
+  <SiteHeader showLogin />
+  <main class="mx-auto max-w-2xl px-5 py-14">
+    <h1 class="text-3xl font-bold">{title}</h1>
+    <p class="mt-2 text-sm text-slate-400">Berlaku sejak {updated}. Dikelola oleh {op.name}.</p>
+    <div class="legal mt-8 space-y-4 leading-relaxed text-slate-300">
+      <slot />
+    </div>
+    <p class="mt-10 border-t border-white/10 pt-6 text-sm text-slate-400">
+      Pertanyaan tentang halaman ini:
+      {
+        op.hasEmail ? (
+          <a href={`mailto:${op.email}`} class="text-indigo-300 underline underline-offset-4 hover:text-indigo-200">
+            {op.email}
+          </a>
+        ) : (
+          <span>{op.email}</span>
+        )
+      }
+    </p>
+  </main>
+  <SiteFooter />
+</Base>
+
+<style>
+  .legal :global(h2) {
+    @apply pt-6 text-xl font-bold;
+  }
+  .legal :global(ul) {
+    @apply list-disc space-y-2 pl-5;
+  }
+  .legal :global(a) {
+    @apply text-indigo-300 underline underline-offset-4 hover:text-indigo-200;
+  }
+  .legal :global(strong) {
+    @apply font-semibold text-white;
+  }
+</style>

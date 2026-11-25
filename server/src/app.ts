@@ -2,7 +2,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
-import { env, paymentsEnabled } from "./lib/env.js";
+import { env, mailEnabled, paymentsEnabled } from "./lib/env.js";
 import { prisma } from "./lib/prisma.js";
 import { ValidationError } from "./lib/validation.js";
 import { apiLimiter, authLimiter } from "./middlewares/rate-limit.middleware.js";
@@ -36,14 +36,18 @@ app.use(
 );
 
 app.use("/api", apiLimiter);
-app.use(["/api/auth/login", "/api/auth/register"], authLimiter);
+// Semua endpoint yang memeriksa password atau mengirim email.
+app.use(
+  ["/api/auth/login", "/api/auth/register", "/api/auth/forgot-password", "/api/auth/reset-password", "/api/auth/password", "/api/auth/account"],
+  authLimiter,
+);
 
 /** Dipakai monitoring/uptime check: 200 jika database bisa di-ping, 503 jika tidak. */
 app.get("/api/health", async (_req: Request, res: Response) => {
   const timestamp = new Date().toISOString();
   try {
     await prisma.$runCommandRaw({ ping: 1 });
-    res.json({ status: "ok", timestamp, payments: paymentsEnabled() });
+    res.json({ status: "ok", timestamp, payments: paymentsEnabled(), email: mailEnabled() });
   } catch (err) {
     console.error("Health check: database tidak terjangkau", err);
     res.status(503).json({ status: "error", timestamp, message: "Database tidak terjangkau." });
@@ -81,6 +85,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 const server = app.listen(env.port, () => {
   console.log(`API berjalan di http://localhost:${env.port}`);
   if (!paymentsEnabled()) console.log("Midtrans belum dikonfigurasi: checkout online nonaktif.");
+  if (!mailEnabled()) console.log("SMTP belum dikonfigurasi: email struk dan reset password nonaktif.");
 });
 
 const shutdown = async () => {

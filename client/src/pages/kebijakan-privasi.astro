@@ -1,0 +1,59 @@
+---
+import LegalPage from "../components/LegalPage.astro";
+---
+
+<LegalPage title="Kebijakan Privasi" description="Data apa yang disimpan smart-storefront, untuk apa, dan cara menghapusnya." updated="25 November 2026">
+  <p>
+    Halaman ini menjelaskan data yang kami simpan saat kamu membuat toko atau membeli di halaman toko, untuk apa data itu dipakai, dan cara
+    menghapusnya.
+  </p>
+
+  <h2>Data penjual</h2>
+  <ul>
+    <li><strong>Akun:</strong> username, email, dan password. Password disimpan dalam bentuk hash (bcrypt), bukan teks aslinya.</li>
+    <li><strong>Profil toko:</strong> nama toko, bio, foto profil, warna aksen, dan tautan sosial. Semua ini tampil publik di halaman tokomu.</li>
+    <li><strong>Isi toko:</strong> produk, tautan, gambar, file produk digital, dan kode promo yang kamu buat.</li>
+  </ul>
+
+  <h2>Data pembeli</h2>
+  <ul>
+    <li>Nama, email, jumlah, dan catatan yang diisi saat checkout.</li>
+    <li>Data ini dilihat oleh penjual toko tempat kamu membeli, supaya pesanan bisa diproses.</li>
+    <li>Nama dan email juga dikirim ke Midtrans untuk memproses pembayaran. Data kartu atau rekening diisi langsung di halaman Midtrans dan tidak pernah sampai ke server kami.</li>
+    <li>Struk pesanan bisa dibuka oleh siapa pun yang tahu kode pesanannya, jadi struk tidak menampilkan email atau catatan.</li>
+  </ul>
+
+  <h2>Statistik kunjungan</h2>
+  <p>
+    Setiap kunjungan ke halaman toko dan klik pada item dicatat sebagai angka (jenis kejadian, item, dan waktu) untuk grafik di dashboard
+    penjual. Kami tidak menyimpan alamat IP, perangkat, atau identitas pengunjung di catatan ini. Alamat IP hanya dipakai sementara di memori
+    server untuk membatasi jumlah permintaan (maksimal 15 menit) dan tidak disimpan.
+  </p>
+
+  <h2>Cookie</h2>
+  <p>
+    Kami hanya memakai satu cookie, <code>token</code>, untuk menjaga penjual tetap masuk ke dashboard selama 7 hari. Tidak ada cookie iklan atau
+    pelacak pihak ketiga.
+  </p>
+
+  <h2>Pihak lain yang menerima data</h2>
+  <ul>
+    <li><strong>Midtrans</strong> (PT Midtrans): pemrosesan pembayaran.</li>
+    <li><strong>Penyedia email</strong>: pengiriman struk, notifikasi pesanan, dan tautan reset password.</li>
+    <li><strong>Penyedia server</strong>: tempat aplikasi dan database berjalan.</li>
+  </ul>
+  <p>Kami tidak menjual data dan tidak membagikannya untuk iklan.</p>
+
+  <h2>Berapa lama data disimpan</h2>
+  <p>
+    Data akun, toko, dan pesanan disimpan selama akun penjual aktif. Penjual bisa menghapus akunnya sendiri di
+    <a href="/dashboard/settings">Pengaturan</a>, dan semua data toko, pesanan, statistik, serta file produk digitalnya ikut terhapus permanen.
+    Salinan cadangan database ikut terhapus mengikuti jadwal rotasi cadangan.
+  </p>
+
+  <h2>Hakmu</h2>
+  <p>
+    Sesuai UU No. 27 Tahun 2022 tentang Pelindungan Data Pribadi, kamu bisa meminta salinan, perbaikan, atau penghapusan data pribadimu.
+    Pembeli yang ingin datanya dihapus dari sebuah pesanan bisa menghubungi kami lewat email di bawah dengan menyertakan kode pesanan.
+  </p>
+</LegalPage>

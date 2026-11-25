@@ -20,6 +20,14 @@ export const env = {
   /** Rahasia bersama dengan server Astro (SSR) agar request SSR tidak terkena rate limit per IP. */
   internalApiKey: process.env.INTERNAL_API_KEY ?? "",
   isProduction: process.env.NODE_ENV === "production",
+  /** SMTP untuk email struk, notifikasi pesanan, dan reset password. Kosong = email nonaktif. */
+  smtp: {
+    host: process.env.SMTP_HOST ?? "",
+    port: Number(process.env.SMTP_PORT ?? 587),
+    user: process.env.SMTP_USER ?? "",
+    pass: process.env.SMTP_PASS ?? "",
+    from: process.env.MAIL_FROM ?? "",
+  },
   midtrans: {
     serverKey: process.env.MIDTRANS_SERVER_KEY ?? "",
     clientKey: process.env.MIDTRANS_CLIENT_KEY ?? "",
@@ -34,4 +42,6 @@ export const env = {
   },
 } as const;
 
-export const paymentsEnabled = (): boolean => Boolean(env.midtrans.serverKey && env.midtrans.clientKey);
+export const mailEnabled = (): boolean => Boolean(env.smtp.host && env.smtp.from);
+
+export const paymentsEnabled =(): boolean => Boolean(env.midtrans.serverKey && env.midtrans.clientKey);

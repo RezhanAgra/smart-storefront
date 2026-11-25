@@ -81,8 +81,8 @@ export async function createItem(req: Request, res: Response): Promise<void> {
 
   // Item baru ditaruh di urutan paling bawah kecuali orderIndex dikirim.
   const orderIndex = fields.orderIndex ?? (await prisma.item.count({ where: { userId } }));
-  // Produk digital tanpa isian stok berarti tanpa batas (null), bukan stok 0 bawaan skema.
-  const stock = fields.stock ?? (fields.isDigital ? null : undefined);
+  // Stok tidak diisi berarti tanpa batas (null), bukan stok 0 bawaan skema yang langsung "Stok habis".
+  const stock = fields.stock ?? null;
 
   const data: Prisma.ItemUncheckedCreateInput = {
     ...fields,
@@ -112,9 +112,15 @@ export async function updateItem(req: Request, res: Response): Promise<void> {
   const nextUrl = fields.url === undefined ? existing.url : fields.url;
   if (nextType === "link" && !nextUrl) throw new ValidationError("Item bertipe link wajib punya url.");
 
+  // null dari form edit berarti kolom dikosongkan: harga kosong = gratis, stok kosong = tanpa batas.
   const item = await prisma.item.update({
     where: { id: existing.id },
-    data: { ...fields, title },
+    data: {
+      ...fields,
+      title,
+      ...(body.price === null && { price: null }),
+      ...(body.stock === null && { stock: null }),
+    },
   });
   res.json({ item });
 }

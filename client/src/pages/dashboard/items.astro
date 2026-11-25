@@ -60,11 +60,13 @@ const radioClass =
           <div class="mt-4 grid grid-cols-2 gap-3">
             <div>
               <label for="f-price" class="label">Harga (Rp)</label>
-              <input id="f-price" name="price" type="number" min="0" step="1" inputmode="numeric" class="glass-input mt-1" />
+              <input id="f-price" name="price" type="number" min="0" step="1" inputmode="numeric" aria-describedby="f-price-hint" class="glass-input mt-1" />
+              <p id="f-price-hint" class="mt-1 text-xs text-slate-400">Kosong = gratis</p>
             </div>
             <div>
               <label for="f-stock" class="label">Stok</label>
-              <input id="f-stock" name="stock" type="number" min="0" step="1" inputmode="numeric" class="glass-input mt-1" />
+              <input id="f-stock" name="stock" type="number" min="0" step="1" inputmode="numeric" aria-describedby="f-stock-hint" class="glass-input mt-1" />
+              <p id="f-stock-hint" class="mt-1 text-xs text-slate-400">Kosong = tanpa batas</p>
             </div>
           </div>
 
@@ -192,11 +194,13 @@ const radioClass =
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label for="e-price" class="label">Harga (Rp)</label>
-                    <input id="e-price" name="price" type="number" min="0" step="1" inputmode="numeric" class="glass-input mt-1" />
+                    <input id="e-price" name="price" type="number" min="0" step="1" inputmode="numeric" aria-describedby="e-price-hint" class="glass-input mt-1" />
+                    <p id="e-price-hint" class="mt-1 text-xs text-slate-400">Kosong = gratis</p>
                   </div>
                   <div>
                     <label for="e-stock" class="label">Stok</label>
-                    <input id="e-stock" name="stock" type="number" min="0" step="1" inputmode="numeric" class="glass-input mt-1" />
+                    <input id="e-stock" name="stock" type="number" min="0" step="1" inputmode="numeric" aria-describedby="e-stock-hint" class="glass-input mt-1" />
+                    <p id="e-stock-hint" class="mt-1 text-xs text-slate-400">Kosong = tanpa batas</p>
                   </div>
                 </div>
                 <div>
@@ -589,7 +593,8 @@ const radioClass =
     }
     const { item } = editing;
     const value = (id: string) => field(id).value.trim();
-    const number = (id: string) => (value(id) === "" ? undefined : Number(value(id)));
+    // Angka kosong dikirim null: harga kosong = gratis, stok kosong = tanpa batas.
+    const number = (id: string) => (value(id) === "" ? null : Number(value(id)));
     // String kosong dikirim apa adanya: server menyimpannya sebagai null (menghapus isian lama).
     const payload = {
       title: value("e-title"),

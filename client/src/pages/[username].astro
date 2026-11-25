@@ -264,6 +264,10 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
           <p class="flex flex-wrap items-center justify-center gap-x-2 text-xs text-slate-400">
             Dibuat dengan <BrandLogo size="sm" badge={false} />
           </p>
+          <p class="mt-1 flex flex-wrap justify-center text-xs">
+            <a href="/kebijakan-refund" class="inline-flex min-h-11 items-center px-2 text-slate-400 hover:text-white">Kebijakan Refund</a>
+            <a href="/kebijakan-privasi" class="inline-flex min-h-11 items-center px-2 text-slate-400 hover:text-white">Kebijakan Privasi</a>
+          </p>
         </footer>
 
         {paymentsEnabled && (
@@ -355,7 +359,11 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
                     Batal
                   </button>
                 </div>
-                <p class="mt-3 text-center text-xs text-slate-400">Pembayaran diproses oleh Midtrans.</p>
+                <p class="mt-3 text-center text-xs leading-relaxed text-slate-400">
+                  Pembayaran diproses oleh Midtrans. Dengan membayar, kamu setuju dengan
+                  <a href="/syarat-ketentuan" target="_blank" rel="noopener" class="text-slate-300 underline underline-offset-2 hover:text-white">Syarat & Ketentuan<span class="sr-only"> (tab baru)</span></a> dan
+                  <a href="/kebijakan-refund" target="_blank" rel="noopener" class="text-slate-300 underline underline-offset-2 hover:text-white">Kebijakan Refund<span class="sr-only"> (tab baru)</span></a>.
+                </p>
               </form>
 
               <div data-view="result" hidden>

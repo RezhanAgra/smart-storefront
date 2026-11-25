@@ -1,5 +1,6 @@
 import { prisma } from "./prisma.js";
 import type { OrderStatus } from "./midtrans.js";
+import { sendOrderPaidEmails } from "./mailer.js";
 
 /**
  * Terapkan status dari Midtrans ke pesanan. Aman dipanggil berulang (webhook bisa dikirim lebih dari
@@ -31,6 +32,9 @@ export async function applyOrderStatus(orderCode: string, status: OrderStatus, p
       if (decremented.count === 0) {
         await prisma.item.updateMany({ where: { id: order.itemId, stock: { not: null } }, data: { stock: 0 } });
       }
+      // Dikirim sekali, di transisi pertama ke PAID yang sama dengan pengurangan stok.
+      const seller = await prisma.user.findUnique({ where: { id: order.userId }, select: { email: true, displayName: true } });
+      if (seller) sendOrderPaidEmails(order, seller);
     }
   } else if (status !== order.status) {
     await prisma.order.update({ where: { id: order.id }, data: { status, paymentType } });

@@ -54,6 +54,8 @@ services:
       # SSR memanggil API lewat jaringan internal, tidak memutar lewat Caddy.
       INTERNAL_API_URL: http://server:5000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      SITE_OPERATOR_NAME: ${SITE_OPERATOR_NAME}
+      SITE_CONTACT_EMAIL: ${SITE_CONTACT_EMAIL}
     networks: [smart_net]
     depends_on:
       server:

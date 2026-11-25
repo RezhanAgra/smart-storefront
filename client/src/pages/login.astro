@@ -39,7 +39,10 @@ const tabClass =
           <input id="login-email" name="email" type="email" autocomplete="email" required class="glass-input mt-1" />
         </div>
         <div>
-          <label for="login-password" class="label">Password</label>
+          <div class="flex items-center justify-between">
+            <label for="login-password" class="label">Password</label>
+            <a href="/lupa-password" class="-my-3 inline-flex min-h-11 items-center text-sm text-indigo-300 underline-offset-4 hover:text-indigo-200 hover:underline">Lupa password?</a>
+          </div>
           <input id="login-password" name="password" type="password" autocomplete="current-password" required class="glass-input mt-1" />
         </div>
         <button type="submit" class="btn-glow w-full rounded-xl">Masuk ke dashboard</button>

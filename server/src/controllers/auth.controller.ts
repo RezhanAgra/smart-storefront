@@ -1,8 +1,13 @@
 import type { CookieOptions, Request, Response } from "express";
+import { createHash, randomBytes } from "node:crypto";
+import { unlink } from "node:fs/promises";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
-import { env } from "../lib/env.js";
+import { env, mailEnabled } from "../lib/env.js";
+import { sendPasswordResetEmail } from "../lib/mailer.js";
+import { digitalFilePath, isDigitalFileKey } from "../lib/digital.js";
+import { DEMO_USERNAME } from "./checkout.controller.js";
 import { TOKEN_COOKIE, TOKEN_TTL_SECONDS, signToken } from "../middlewares/auth.middleware.js";
 import { asBody, ValidationError } from "../lib/validation.js";
 import { firstIssue, updateProfileSchema } from "../lib/schemas.js";
@@ -84,7 +89,8 @@ export async function login(req: Request, res: Response): Promise<void> {
   const email = requireString(body.email, "Email wajib diisi.").toLowerCase();
   const password = typeof body.password === "string" ? body.password : "";
 
-  const found = await prisma.user.findUnique({ where: { email } });
+  // Select eksplisit: field internal (hash password, token reset) tidak boleh ikut ke respons.
+  const found = await prisma.user.findUnique({ where: { email }, select: { ...publicUserSelect, passwordHash: true } });
   // Pesan sama untuk email salah dan password salah, supaya tidak membocorkan email yang terdaftar.
   if (!found || !(await bcrypt.compare(password, found.passwordHash))) {
     res.status(401).json({ message: "Email atau password salah." });
@@ -122,4 +128,105 @@ export async function updateProfile(req: Request, res: Response): Promise<void> 
     select: publicUserSelect,
   });
   res.json({ user });
+}
+
+/** Password user yang login harus cocok, atau melempar 400. Dipakai untuk aksi sensitif. */
+async function verifyCurrentPassword(userId: string | undefined, password: unknown): Promise<void> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { passwordHash: true } });
+  if (!user || typeof password !== "string" || !(await bcrypt.compare(password, user.passwordHash))) {
+    throw new ValidationError("Password saat ini salah.");
+  }
+}
+
+/** PUT /api/auth/password: { currentPassword, newPassword } */
+export async function changePassword(req: Request, res: Response): Promise<void> {
+  const body = asBody(req.body);
+  const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
+  if (newPassword.length < 8) throw new ValidationError("Password baru minimal 8 karakter.");
+  await verifyCurrentPassword(req.userId, body.currentPassword);
+
+  await prisma.user.update({
+    where: { id: req.userId },
+    data: { passwordHash: await bcrypt.hash(newPassword, 10), resetTokenHash: null, resetTokenExpires: null },
+  });
+  res.json({ message: "Password berhasil diganti." });
+}
+
+/**
+ * DELETE /api/auth/account: { password }. Menghapus user beserta item, pesanan, analitik, dan kupon
+ * (cascade di skema), lalu file produk digital miliknya.
+ */
+export async function deleteAccount(req: Request, res: Response): Promise<void> {
+  const body = asBody(req.body);
+  await verifyCurrentPassword(req.userId, body.password);
+
+  const user = await prisma.user.findUnique({ where: { id: req.userId }, select: { username: true } });
+  if (user?.username === DEMO_USERNAME) throw new ValidationError("Akun demo tidak bisa dihapus dari sini.");
+
+  const files = await prisma.item.findMany({
+    where: { userId: req.userId, digitalFileKey: { not: null } },
+    select: { digitalFileKey: true },
+  });
+  await prisma.user.delete({ where: { id: req.userId } });
+  await Promise.all(
+    files.map(({ digitalFileKey: key }) =>
+      isDigitalFileKey(key) ? unlink(digitalFilePath(key)).catch(() => undefined) : undefined,
+    ),
+  );
+
+  res.clearCookie(TOKEN_COOKIE, cookieOptions);
+  res.json({ message: "Akun dihapus." });
+}
+
+const RESET_TTL_MS = 60 * 60 * 1000;
+const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
+
+/**
+ * POST /api/auth/forgot-password: { email }. Jawabannya selalu sama untuk email terdaftar atau tidak,
+ * supaya endpoint ini tidak bisa dipakai menebak email yang terdaftar.
+ */
+export async function forgotPassword(req: Request, res: Response): Promise<void> {
+  if (!mailEnabled()) {
+    res.status(503).json({ message: "Reset password lewat email belum diaktifkan. Hubungi pengelola situs." });
+    return;
+  }
+  const email = requireString(asBody(req.body).email, "Email wajib diisi.").toLowerCase();
+  const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+
+  if (user) {
+    const token = randomBytes(32).toString("hex");
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { resetTokenHash: hashToken(token), resetTokenExpires: new Date(Date.now() + RESET_TTL_MS) },
+    });
+    try {
+      await sendPasswordResetEmail(email, token);
+    } catch (err) {
+      console.error("Gagal mengirim email reset password:", err);
+      res.status(502).json({ message: "Email gagal dikirim. Coba lagi beberapa menit lagi." });
+      return;
+    }
+  }
+  res.json({ message: "Jika email itu terdaftar, tautan reset sudah dikirim. Cek juga folder spam." });
+}
+
+/** POST /api/auth/reset-password: { token, password }. Token sekali pakai. */
+export async function resetPassword(req: Request, res: Response): Promise<void> {
+  const body = asBody(req.body);
+  const token = typeof body.token === "string" ? body.token : "";
+  const password = typeof body.password === "string" ? body.password : "";
+  if (!/^[a-f0-9]{64}$/.test(token)) throw new ValidationError("Tautan reset tidak valid.");
+  if (password.length < 8) throw new ValidationError("Password minimal 8 karakter.");
+
+  const user = await prisma.user.findFirst({
+    where: { resetTokenHash: hashToken(token), resetTokenExpires: { gt: new Date() } },
+    select: { id: true },
+  });
+  if (!user) throw new ValidationError("Tautan reset sudah kedaluwarsa atau sudah dipakai. Minta tautan baru.");
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash: await bcrypt.hash(password, 10), resetTokenHash: null, resetTokenExpires: null },
+  });
+  res.json({ message: "Password baru tersimpan. Silakan masuk." });
 }
