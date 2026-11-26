@@ -315,7 +315,7 @@ const platforms = ["Instagram", "TikTok", "WhatsApp", "Shopee", "Tokopedia", "Yo
     event.preventDefault();
     formError.textContent = "";
     if (!form.checkValidity()) {
-      const invalid = form.querySelector<HTMLInputElement>(":invalid");
+      const invalid = form.querySelector<HTMLInputElement>("input:invalid, textarea:invalid, select:invalid");
       const label = invalid ? form.querySelector(`label[for="${invalid.id}"]`)?.textContent?.trim() : null;
       formError.textContent = label ? `Periksa "${label}". ${invalid?.validationMessage ?? ""}` : "Periksa isian form.";
       invalid?.focus();
@@ -370,7 +370,7 @@ const platforms = ["Instagram", "TikTok", "WhatsApp", "Shopee", "Tokopedia", "Yo
       event.preventDefault();
       error.textContent = "";
       if (!form.checkValidity()) {
-        const invalid = form.querySelector<HTMLInputElement>(":invalid")!;
+        const invalid = form.querySelector<HTMLInputElement>("input:invalid, textarea:invalid, select:invalid")!;
         const label = form.querySelector(`label[for="${invalid.id}"]`)?.textContent?.trim();
         error.textContent = invalidMessage?.(invalid) ?? `Periksa "${label}". ${invalid.validationMessage}`;
         invalid.focus();

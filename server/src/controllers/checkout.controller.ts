@@ -13,6 +13,7 @@ import {
 } from "../lib/midtrans.js";
 import { applyOrderStatus } from "../lib/orders.js";
 import { quoteCoupon } from "../lib/coupons.js";
+import { checkoutSchema, firstIssue } from "../lib/schemas.js";
 
 /** Item produk aktif yang bisa dibayar online, atau melempar error untuk ditampilkan ke pembeli. */
 async function findPayableItem(itemId: unknown, quantity: number) {
@@ -22,7 +23,8 @@ async function findPayableItem(itemId: unknown, quantity: number) {
   }
   const item = await prisma.item.findFirst({ where: { id: itemId, isActive: true, type: "product" } });
   if (!item) throw new NotFoundError("Produk tidak ditemukan atau sudah tidak dijual.");
-  const seller = await prisma.user.findUnique({ where: { id: item.userId }, select: { username: true } });
+  const seller = await prisma.user.findUnique({ where: { id: item.userId }, select: { username: true, isSuspended: true } });
+  if (seller?.isSuspended) throw new ValidationError("Toko ini sedang dinonaktifkan, jadi pembelian tidak bisa dilakukan.");
   if (seller?.username === DEMO_USERNAME) throw new ValidationError("Ini toko demo, jadi pembelian dinonaktifkan.");
   if (!item.price || item.price < 1) throw new ValidationError("Produk ini tidak bisa dibayar online.");
   if (item.stock !== null && item.stock < quantity) {
@@ -54,7 +56,6 @@ export async function previewCoupon(req: Request, res: Response): Promise<void> 
 /** Akun toko contoh dari `npm run seed`. Dibuat agar pengunjung bisa melihat tampilan, bukan untuk berjualan. */
 export const DEMO_USERNAME = "demo";
 
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ORDER_CODE = /^SS-[A-Z0-9-]{6,40}$/;
 
 const newOrderCode = () =>
@@ -67,18 +68,19 @@ export async function createCheckout(req: Request, res: Response): Promise<void>
     return;
   }
 
-  const body = asBody(req.body);
-  const quantity = Number(body.quantity);
-  const couponInput = optionalString(body, "couponCode");
-  const buyerName = optionalString(body, "buyerName");
-  const buyerEmail = optionalString(body, "buyerEmail")?.toLowerCase();
-  const note = optionalString(body, "note") ?? null;
+  const parsed = checkoutSchema.safeParse(req.body);
+  if (!parsed.success) throw new ValidationError(firstIssue(parsed.error));
+  const { quantity, buyerName, buyerEmail, couponCode: couponInput } = parsed.data;
+  const note = parsed.data.note ?? null;
 
-  if (!buyerName) throw new ValidationError("Nama wajib diisi.");
-  if (!buyerEmail || !EMAIL.test(buyerEmail)) throw new ValidationError("Email tidak valid.");
-  if (note && note.length > 300) throw new ValidationError("Catatan maksimal 300 karakter.");
+  const item = await findPayableItem(parsed.data.itemId, quantity);
 
-  const item = await findPayableItem(body.itemId, quantity);
+  // Barang fisik wajib punya tujuan pengiriman; produk lain tidak menyimpan alamat sama sekali.
+  const isPhysical = Boolean(item.isPhysical);
+  if (isPhysical && !parsed.data.shippingPhone) throw new ValidationError("Nomor WhatsApp/HP wajib diisi untuk pengiriman.");
+  if (isPhysical && !parsed.data.shippingAddress) throw new ValidationError("Alamat pengiriman wajib diisi.");
+  const shippingPhone = isPhysical ? parsed.data.shippingPhone! : null;
+  const shippingAddress = isPhysical ? parsed.data.shippingAddress! : null;
   const unitPrice = item.price!;
   const subtotal = unitPrice * quantity;
   const quote = couponInput ? await quoteCoupon(item.userId, couponInput, subtotal) : null;
@@ -92,7 +94,7 @@ export async function createCheckout(req: Request, res: Response): Promise<void>
       grossAmount,
       item: { id: item.id, name: item.title, price: unitPrice, quantity },
       ...(quote && { discount: { code: quote.coupon.code, amount: discountAmount } }),
-      customer: { name: buyerName, email: buyerEmail },
+      customer: { name: buyerName, email: buyerEmail, ...(shippingPhone && { phone: shippingPhone }) },
     });
 
     await prisma.order.create({
@@ -112,6 +114,8 @@ export async function createCheckout(req: Request, res: Response): Promise<void>
         buyerName,
         buyerEmail,
         note,
+        shippingPhone,
+        shippingAddress,
         snapToken: snap.token,
       },
     });

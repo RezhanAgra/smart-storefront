@@ -27,6 +27,8 @@ function parseEditableFields(body: Body) {
   const isActive = body.isActive;
   const isDigital = body.isDigital;
   if (isDigital !== undefined && typeof isDigital !== "boolean") throw new ValidationError("isDigital harus boolean.");
+  const isPhysical = body.isPhysical;
+  if (isPhysical !== undefined && typeof isPhysical !== "boolean") throw new ValidationError("isPhysical harus boolean.");
 
   // File digital harus hasil upload ke /api/uploads/digital (key valid dan filenya ada).
   let digitalFileKey: string | null | undefined;
@@ -49,6 +51,7 @@ function parseEditableFields(body: Body) {
     orderIndex: optionalInt(body, "orderIndex"),
     isActive: isActive as boolean | undefined,
     isDigital: isDigital as boolean | undefined,
+    isPhysical: isPhysical as boolean | undefined,
     digitalFileKey,
     digitalFileName: rawName === undefined ? undefined : rawName === null ? null : cleanFileName(rawName),
   };
@@ -78,6 +81,7 @@ export async function createItem(req: Request, res: Response): Promise<void> {
   const fields = parseEditableFields(body);
   const type = fields.type ?? "product";
   if (type === "link" && !fields.url) throw new ValidationError("Item bertipe link wajib punya url.");
+  if (fields.isDigital && fields.isPhysical) throw new ValidationError("Produk tidak bisa digital dan fisik sekaligus.");
 
   // Item baru ditaruh di urutan paling bawah kecuali orderIndex dikirim.
   const orderIndex = fields.orderIndex ?? (await prisma.item.count({ where: { userId } }));
@@ -111,6 +115,9 @@ export async function updateItem(req: Request, res: Response): Promise<void> {
   const nextType = fields.type ?? existing.type;
   const nextUrl = fields.url === undefined ? existing.url : fields.url;
   if (nextType === "link" && !nextUrl) throw new ValidationError("Item bertipe link wajib punya url.");
+  if ((fields.isDigital ?? existing.isDigital) && (fields.isPhysical ?? existing.isPhysical)) {
+    throw new ValidationError("Produk tidak bisa digital dan fisik sekaligus.");
+  }
 
   // null dari form edit berarti kolom dikosongkan: harga kosong = gratis, stok kosong = tanpa batas.
   const item = await prisma.item.update({

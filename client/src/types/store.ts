@@ -15,6 +15,8 @@ export interface StoreItem {
   orderIndex: number;
   /** Produk digital: file bisa diunduh dari struk setelah lunas. */
   isDigital?: boolean | null;
+  /** Barang fisik: checkout meminta nomor HP dan alamat pengiriman. */
+  isPhysical?: boolean | null;
 }
 
 /** Item milik user di dashboard (`GET /api/items`), termasuk field internal. */
@@ -59,6 +61,11 @@ export interface UserProfile {
   themeColor: string;
   isVerified: boolean;
   socialLinks: SocialLink[];
+  role?: "SELLER" | "ADMIN" | null;
+  /** Email sudah dikonfirmasi lewat tautan (syarat pencairan dana). */
+  emailVerified?: boolean | null;
+  isSuspended?: boolean | null;
+  suspendedReason?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -75,6 +82,9 @@ export interface OrderReceipt {
   discountAmount: number;
   totalAmount: number;
   digital: { fileName: string; downloadsLeft: number } | null;
+  needsShipping: boolean;
+  trackingNumber: string | null;
+  shippedAt: string | null;
   status: OrderStatus;
   paymentType: string | null;
   paidAt: string | null;
@@ -101,6 +111,10 @@ export interface Order {
   discountAmount: number | null;
   digitalFileName: string | null;
   downloadCount: number | null;
+  shippingAddress: string | null;
+  shippingPhone: string | null;
+  trackingNumber: string | null;
+  shippedAt: string | null;
   buyerName: string;
   buyerEmail: string;
   note: string | null;
@@ -142,4 +156,65 @@ export interface CouponPreview {
   subtotal: number;
   discountAmount: number;
   total: number;
+}
+
+export type PayoutStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface Payout {
+  id: string;
+  amount: number;
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+  status: PayoutStatus;
+  adminNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Balance {
+  totalRevenue: number;
+  totalWithdrawn: number;
+  pendingWithdrawal: number;
+  availableBalance: number;
+}
+
+/** `GET /api/payouts/summary` */
+export interface PayoutSummary extends Balance {
+  minimumPayout: number;
+  canWithdraw: boolean;
+  emailVerified: boolean;
+  isSuspended: boolean;
+  history: Payout[];
+}
+
+export type ReportReason = "PHISHING" | "PENIPUAN" | "KONTEN_TERLARANG" | "LAINNYA";
+
+/** `GET /api/admin/overview` */
+export interface AdminOverview {
+  users: {
+    id: string;
+    username: string;
+    displayName: string;
+    email: string;
+    role: "SELLER" | "ADMIN";
+    emailVerified: boolean;
+    isSuspended: boolean;
+    suspendedReason: string | null;
+    createdAt: string;
+    _count: { items: number; orders: number; reports: number };
+  }[];
+  reports: {
+    id: string;
+    reason: ReportReason;
+    description: string;
+    reporterEmail: string | null;
+    status: "OPEN" | "RESOLVED" | "DISMISSED";
+    createdAt: string;
+    targetUser: { id: string; username: string; displayName: string; isSuspended: boolean | null };
+  }[];
+  payouts: (Payout & {
+    seller: { id: string; username: string; displayName: string; email: string; isSuspended: boolean | null };
+    sellerBalance: Balance;
+  })[];
 }

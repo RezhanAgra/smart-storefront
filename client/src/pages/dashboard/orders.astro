@@ -74,6 +74,7 @@ const filters = [
 <script>
   import { errorMessage, formatRupiah } from "../../lib/api";
   import { api, formatDateTime, redirectIfUnauthorized, showState } from "../../lib/client";
+  import { toast } from "../../lib/toast";
   import type { Order, OrderStatus } from "../../types/store";
 
   const root = document.querySelector<HTMLElement>("#orders")!;
@@ -139,6 +140,86 @@ const filters = [
       total,
       cell("Status", badge, ...(order.paymentType ? [muted(order.paymentType.replace(/_/g, " "))] : [])),
     );
+    return order.shippingAddress ? [tr, shippingRow(order)] : [tr];
+  }
+
+  /** Baris tambahan untuk barang fisik: alamat tujuan dan input nomor resi. */
+  function shippingRow(order: Order) {
+    const tr = document.createElement("tr");
+    // Tanpa garis pemisah agar menyatu dengan baris pesanannya.
+    tr.className = "!border-t-0 max-md:block max-md:px-4 max-md:pb-4";
+    const td = document.createElement("td");
+    td.colSpan = 6;
+    td.className = "px-4 pb-4 max-md:block max-md:p-0";
+    tr.append(td);
+
+    const box = document.createElement("div");
+    box.className = "grid gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]";
+    td.append(box);
+
+    const address = document.createElement("div");
+    address.className = "min-w-0 text-sm";
+    const heading = document.createElement("p");
+    heading.className = "text-xs font-medium text-slate-400";
+    heading.textContent = "Kirim ke";
+    const addr = document.createElement("p");
+    addr.className = "mt-0.5 whitespace-pre-line text-slate-100 break-words";
+    addr.textContent = `${order.buyerName}\n${order.shippingAddress}`;
+    const phone = document.createElement("a");
+    phone.className = "mt-1 inline-flex min-h-11 items-center text-indigo-300 underline-offset-4 hover:underline";
+    phone.href = `https://wa.me/${(order.shippingPhone ?? "").replace(/^0/, "62").replace(/^\+/, "")}`;
+    phone.target = "_blank";
+    phone.rel = "noopener";
+    phone.textContent = `WhatsApp ${order.shippingPhone ?? "-"}`;
+    address.append(heading, addr, phone);
+    box.append(address);
+
+    if (order.status !== "PAID") {
+      box.append(muted("Nomor resi bisa diisi setelah pesanan lunas."));
+      return tr;
+    }
+
+    const form = document.createElement("form");
+    form.className = "self-start";
+    form.noValidate = true;
+    const id = `tracking-${order.id}`;
+    form.innerHTML = `
+      <label for="${id}" class="label text-xs">Nomor resi pengiriman</label>
+      <div class="mt-1 flex gap-2">
+        <input id="${id}" name="trackingNumber" maxlength="60" placeholder="JNE 0123456789" class="glass-input min-w-0 text-sm" />
+        <button type="submit" class="btn-ghost shrink-0 px-4 text-sm">Simpan</button>
+      </div>
+      <p class="mt-1.5 text-xs text-slate-400" data-tracking-status></p>`;
+    const input = form.querySelector<HTMLInputElement>("input")!;
+    const button = form.querySelector<HTMLButtonElement>("button")!;
+    const statusEl = form.querySelector<HTMLElement>("[data-tracking-status]")!;
+    input.value = order.trackingNumber ?? "";
+    statusEl.textContent = order.shippedAt ? `Dikirim ${formatDateTime(order.shippedAt)}. Pembeli melihat resi di struknya.` : "Pembeli dikabari lewat email saat resi disimpan.";
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      button.disabled = true;
+      button.textContent = "Menyimpan...";
+      try {
+        const res = await api(`/orders/${order.id}/tracking`, {
+          method: "PATCH",
+          body: JSON.stringify({ trackingNumber: input.value.trim() || null }),
+        });
+        if (redirectIfUnauthorized(res)) return;
+        if (!res.ok) throw new Error(await errorMessage(res, "Nomor resi gagal disimpan."));
+        const { order: saved } = (await res.json()) as { order: Pick<Order, "trackingNumber" | "shippedAt"> };
+        order.trackingNumber = saved.trackingNumber;
+        order.shippedAt = saved.shippedAt;
+        statusEl.textContent = saved.shippedAt ? `Dikirim ${formatDateTime(saved.shippedAt)}. Pembeli melihat resi di struknya.` : "Resi dihapus.";
+        toast(saved.trackingNumber ? `Resi ${saved.trackingNumber} disimpan.` : "Nomor resi dihapus.");
+      } catch (err) {
+        toast(err instanceof TypeError ? "Tidak bisa terhubung ke server." : (err as Error).message, "error");
+      } finally {
+        button.disabled = false;
+        button.textContent = "Simpan";
+      }
+    });
+    box.append(form);
     return tr;
   }
 
@@ -149,7 +230,7 @@ const filters = [
       if (redirectIfUnauthorized(res)) return;
       if (!res.ok) throw new Error(await errorMessage(res, "Pesanan tidak bisa dimuat."));
       const { orders } = (await res.json()) as { orders: Order[] };
-      body.replaceChildren(...orders.map(row));
+      body.replaceChildren(...orders.flatMap(row));
       showState(root, orders.length ? "ready" : "empty");
     } catch (err) {
       document.querySelector("#error-text")!.textContent =

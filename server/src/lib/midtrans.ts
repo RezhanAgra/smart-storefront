@@ -21,7 +21,7 @@ interface SnapRequest {
   item: { id: string; name: string; price: number; quantity: number };
   /** Diskon kupon (Rupiah). Dikirim sebagai item harga negatif agar total item = gross_amount. */
   discount?: { code: string; amount: number };
-  customer: { name: string; email: string };
+  customer: { name: string; email: string; phone?: string };
 }
 
 export async function createSnapTransaction(req: SnapRequest): Promise<{ token: string; redirectUrl: string }> {
@@ -37,7 +37,11 @@ export async function createSnapTransaction(req: SnapRequest): Promise<{ token: 
           ? [{ id: "DISCOUNT", name: `Diskon ${req.discount.code}`.slice(0, 50), price: -req.discount.amount, quantity: 1 }]
           : []),
       ],
-      customer_details: { first_name: req.customer.name.slice(0, 50), email: req.customer.email },
+      customer_details: {
+        first_name: req.customer.name.slice(0, 50),
+        email: req.customer.email,
+        ...(req.customer.phone && { phone: req.customer.phone }),
+      },
     }),
   });
 

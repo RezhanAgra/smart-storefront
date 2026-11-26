@@ -8,26 +8,42 @@ datasource db {
 }
 
 model User {
-  id           String           @id @default(auto()) @map("_id") @db.ObjectId
-  username     String           @unique
-  email        String           @unique
-  passwordHash String
-  displayName  String
-  bio          String?
-  avatarUrl    String?
-  themeColor   String           @default("#0f172a")
+  id                    String           @id @default(auto()) @map("_id") @db.ObjectId
+  username              String           @unique
+  email                 String           @unique
+  passwordHash          String
+  displayName           String
+  bio                   String?
+  avatarUrl             String?
+  themeColor            String           @default("#0f172a")
   /// Diisi manual oleh admin. Badge verifikasi di halaman toko hanya tampil jika true.
-  isVerified   Boolean          @default(false)
+  isVerified            Boolean          @default(false)
   /// SHA-256 dari token reset password (token aslinya hanya ada di email). Berlaku 1 jam.
-  resetTokenHash    String?
-  resetTokenExpires DateTime?
-  socialLinks  SocialLink[]
-  items        Item[]
-  orders       Order[]
-  events       AnalyticsEvent[]
-  coupons      Coupon[]
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  resetTokenHash        String?
+  resetTokenExpires     DateTime?
+  /// SELLER | ADMIN
+  role                  String?          @default("SELLER")
+  /// Email sudah dikonfirmasi lewat tautan. Terpisah dari isVerified (badge toko yang diatur admin).
+  emailVerified         Boolean?         @default(false)
+  /// SHA-256 dari token verifikasi email (token aslinya hanya ada di email). Berlaku 24 jam.
+  verificationTokenHash String?
+  verificationExpires   DateTime?
+  verificationSentAt    DateTime?
+  /// Dinonaktifkan admin (phishing/penipuan): halaman toko, checkout, dan pencairan dana diblokir.
+  isSuspended           Boolean?         @default(false)
+  suspendedReason       String?
+  suspendedAt           DateTime?
+  /// Dinaikkan di setiap pengajuan pencairan dalam transaksi, agar dua pengajuan bersamaan saling bentrok.
+  payoutSeq             Int?             @default(0)
+  payouts               Payout[]
+  reports               Report[]
+  socialLinks           SocialLink[]
+  items                 Item[]
+  orders                Order[]
+  events                AnalyticsEvent[]
+  coupons               Coupon[]
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
 }
 
 /// Tautan media sosial di bawah bio halaman toko.
@@ -52,6 +68,8 @@ model Item {
   isActive        Boolean  @default(true)
   /// Produk digital: file dikirim (bisa diunduh dari struk) setelah pembayaran lunas.
   isDigital       Boolean? @default(false)
+  /// Barang fisik: checkout meminta nomor HP dan alamat pengiriman.
+  isPhysical      Boolean? @default(false)
   /// Nama file di server/private-uploads. Tidak pernah dikirim ke endpoint publik.
   digitalFileKey  String?
   digitalFileName String?
@@ -91,6 +109,12 @@ model Order {
   digitalFileKey  String?
   digitalFileName String?
   downloadCount   Int?      @default(0)
+  /// Barang fisik: diisi pembeli saat checkout, hanya terlihat oleh penjual.
+  shippingAddress String?
+  shippingPhone   String?
+  /// Diisi penjual setelah barang dikirim. Tampil di struk pembeli.
+  trackingNumber  String?
+  shippedAt       DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -128,4 +152,39 @@ model Coupon {
   updatedAt DateTime  @updatedAt
 
   @@unique([userId, code])
+}
+
+/// Pengajuan pencairan saldo penjual. Transfer dilakukan manual oleh admin, lalu status diubah.
+model Payout {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  sellerId      String   @db.ObjectId
+  seller        User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  amount        Int
+  bankName      String
+  accountNumber String
+  accountHolder String
+  /// PENDING | APPROVED | REJECTED
+  status        String   @default("PENDING")
+  adminNote     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([sellerId, createdAt])
+  @@index([status, createdAt])
+}
+
+/// Laporan publik terhadap toko (phishing, penipuan, konten terlarang).
+model Report {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  targetUserId  String   @db.ObjectId
+  targetUser    User     @relation(fields: [targetUserId], references: [id], onDelete: Cascade)
+  reporterEmail String?
+  /// PHISHING | PENIPUAN | KONTEN_TERLARANG | LAINNYA
+  reason        String
+  description   String
+  /// OPEN | RESOLVED | DISMISSED
+  status        String   @default("OPEN")
+  createdAt     DateTime @default(now())
+
+  @@index([status, createdAt])
 }

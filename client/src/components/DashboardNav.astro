@@ -4,7 +4,7 @@ import BrandLogo from "./BrandLogo.astro";
 
 interface Props {
   user: UserProfile;
-  active: "analytics" | "items" | "orders" | "promo" | "qr" | "settings";
+  active: "analytics" | "items" | "orders" | "promo" | "qr" | "payouts" | "settings" | "admin";
 }
 const { user, active } = Astro.props;
 
@@ -14,6 +14,7 @@ const links = [
   { key: "orders", href: "/dashboard/orders", label: "Pesanan" },
   { key: "promo", href: "/dashboard/promo", label: "Promo" },
   { key: "qr", href: "/dashboard/qr", label: "QR Kasir" },
+  { key: "payouts", href: "/dashboard/payouts", label: "Pencairan Dana" },
   { key: "settings", href: "/dashboard/settings", label: "Pengaturan" },
 ] as const;
 ---
@@ -38,7 +39,7 @@ const links = [
     <nav aria-label="Dashboard" class="mt-2 border-t border-white/10 pt-2">
       <ul class="grid grid-cols-3 gap-1 lg:flex lg:gap-2">
         {
-          links.map((link) => (
+          [...links, ...(user.role === "ADMIN" ? [{ key: "admin", href: "/admin", label: "Admin" } as const] : [])].map((link) => (
             <li>
               <a
                 href={link.href}
@@ -53,10 +54,52 @@ const links = [
       </ul>
     </nav>
   </div>
+
+  {
+    user.isSuspended && (
+      <div role="alert" class="mt-3 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100 backdrop-blur">
+        <p class="font-semibold">Tokomu dinonaktifkan oleh admin.</p>
+        <p class="mt-0.5 text-rose-200">
+          Halaman toko tidak bisa dibuka pembeli dan pencairan dana ditahan.{user.suspendedReason && ` Alasan: ${user.suspendedReason}`}
+        </p>
+      </div>
+    )
+  }
+  {
+    !user.emailVerified && (
+      <div class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-sm backdrop-blur">
+        <p class="min-w-0 text-amber-100">
+          <span class="font-semibold">Verifikasi emailmu.</span> Kami mengirim tautan ke{" "}
+          <span class="break-all font-medium">{user.email}</span>. Pencairan dana baru bisa setelah email terverifikasi.
+        </p>
+        <button type="button" id="resend-verification" class="btn-ghost shrink-0 border-amber-300/40 text-sm text-amber-100 hover:bg-amber-400/10">
+          Kirim Ulang Email Verifikasi
+        </button>
+      </div>
+    )
+  }
 </header>
 
 <script>
   import { api } from "../lib/client";
+  import { errorMessage } from "../lib/api";
+  import { toast } from "../lib/toast";
+
+  document.querySelector<HTMLButtonElement>("#resend-verification")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    button.disabled = true;
+    button.textContent = "Mengirim...";
+    try {
+      const res = await api("/auth/resend-verification", { method: "POST" });
+      const message = await errorMessage(res, res.ok ? "Tautan verifikasi dikirim." : "Email belum bisa dikirim.");
+      toast(message, res.ok ? "success" : "error");
+    } catch {
+      toast("Tidak bisa terhubung ke server.", "error");
+    } finally {
+      button.disabled = false;
+      button.textContent = "Kirim Ulang Email Verifikasi";
+    }
+  });
 
   document.querySelector<HTMLButtonElement>("#logout")?.addEventListener("click", async (event) => {
     const button = event.currentTarget as HTMLButtonElement;

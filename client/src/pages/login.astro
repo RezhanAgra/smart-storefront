@@ -140,7 +140,7 @@ const tabClass =
   async function submit(form: HTMLFormElement, endpoint: "login" | "register") {
     showError(null);
     if (!form.checkValidity()) {
-      const invalid = form.querySelector<HTMLInputElement>(":invalid");
+      const invalid = form.querySelector<HTMLInputElement>("input:invalid, textarea:invalid, select:invalid");
       const label = invalid ? form.querySelector(`label[for="${invalid.id}"]`)?.textContent : null;
       showError(label ? `Periksa kolom "${label}". ${invalid?.validationMessage ?? ""}` : "Lengkapi semua kolom.");
       invalid?.focus();

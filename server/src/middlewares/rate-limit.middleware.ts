@@ -38,3 +38,12 @@ export const authLimiter = rateLimit({
   legacyHeaders: false,
   message: message("Terlalu banyak percobaan. Tunggu 15 menit lalu coba lagi."),
 });
+
+/** 5 laporan per jam per IP untuk POST /api/reports, supaya formulir laporan tidak dipakai untuk spam. */
+export const reportLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: message("Terlalu banyak laporan dari jaringanmu. Coba lagi dalam 1 jam."),
+});

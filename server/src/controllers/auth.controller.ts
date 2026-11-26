@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { env, mailEnabled } from "../lib/env.js";
-import { sendPasswordResetEmail } from "../lib/mailer.js";
+import { sendPasswordResetEmail, sendVerificationEmail } from "../lib/mailer.js";
 import { digitalFilePath, isDigitalFileKey } from "../lib/digital.js";
 import { DEMO_USERNAME } from "./checkout.controller.js";
 import { TOKEN_COOKIE, TOKEN_TTL_SECONDS, signToken } from "../middlewares/auth.middleware.js";
@@ -15,7 +15,7 @@ import { firstIssue, updateProfileSchema } from "../lib/schemas.js";
 const USERNAME = /^[a-z0-9]{3,30}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Nama yang bentrok dengan route statis di client Astro (/login, /dashboard, /404, dst).
-const RESERVED_USERNAMES = new Set(["login", "logout", "register", "dashboard", "order", "demo", "api", "admin", "404", "500"]);
+const RESERVED_USERNAMES = new Set(["login", "logout", "register", "dashboard", "order", "demo", "api", "admin", "verify-email", "404", "500"]);
 
 /** Field user yang aman dikirim ke client (tanpa passwordHash). */
 export const publicUserSelect = {
@@ -28,6 +28,10 @@ export const publicUserSelect = {
   themeColor: true,
   isVerified: true,
   socialLinks: true,
+  role: true,
+  emailVerified: true,
+  isSuspended: true,
+  suspendedReason: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.UserSelect;
@@ -78,6 +82,11 @@ export async function register(req: Request, res: Response): Promise<void> {
     data: { username, email, passwordHash, displayName },
     select: publicUserSelect,
   });
+
+  // Pendaftaran tetap berhasil walau email gagal terkirim: user bisa memakai tombol kirim ulang di dashboard.
+  await issueVerification(user.id, user.email, user.displayName).catch((err) =>
+    console.error(`Gagal mengirim email verifikasi ke ${user.email}:`, err),
+  );
 
   const token = signToken(user.id);
   setAuthCookie(res, token);
@@ -180,6 +189,74 @@ export async function deleteAccount(req: Request, res: Response): Promise<void> 
 
 const RESET_TTL_MS = 60 * 60 * 1000;
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
+
+const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
+const RESEND_COOLDOWN_MS = 60 * 1000;
+
+/** Buat token verifikasi baru (yang lama otomatis tidak berlaku) dan kirim tautannya. */
+async function issueVerification(userId: string, email: string, displayName: string): Promise<void> {
+  const token = randomBytes(32).toString("hex");
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      verificationTokenHash: hashToken(token),
+      verificationExpires: new Date(Date.now() + VERIFY_TTL_MS),
+      verificationSentAt: new Date(),
+    },
+  });
+  await sendVerificationEmail(email, displayName, token);
+}
+
+/** GET /api/auth/verify-email?token=...: dipanggil halaman /verify-email. */
+export async function verifyEmail(req: Request, res: Response): Promise<void> {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  if (!/^[a-f0-9]{64}$/.test(token)) {
+    res.status(400).json({ message: "Tautan verifikasi tidak valid." });
+    return;
+  }
+  const user = await prisma.user.findFirst({
+    where: { verificationTokenHash: hashToken(token), verificationExpires: { gt: new Date() } },
+    select: { id: true, email: true },
+  });
+  if (!user) {
+    res.status(400).json({ message: "Tautan verifikasi tidak valid atau sudah kedaluwarsa. Kirim ulang dari dashboard." });
+    return;
+  }
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { emailVerified: true, verificationTokenHash: null, verificationExpires: null },
+  });
+  res.json({ verified: true, email: user.email });
+}
+
+/** POST /api/auth/resend-verification: kirim ulang tautan, maksimal sekali per menit. */
+export async function resendVerification(req: Request, res: Response): Promise<void> {
+  const user = await prisma.user.findUnique({
+    where: { id: req.userId },
+    select: { id: true, email: true, displayName: true, emailVerified: true, verificationSentAt: true },
+  });
+  if (!user) {
+    res.status(401).json({ message: "Akun tidak ditemukan." });
+    return;
+  }
+  if (user.emailVerified) {
+    res.status(400).json({ message: "Email kamu sudah terverifikasi." });
+    return;
+  }
+  const waitMs = (user.verificationSentAt?.getTime() ?? 0) + RESEND_COOLDOWN_MS - Date.now();
+  if (waitMs > 0) {
+    res.status(429).json({ message: `Tunggu ${Math.ceil(waitMs / 1000)} detik sebelum mengirim ulang.` });
+    return;
+  }
+  try {
+    await issueVerification(user.id, user.email, user.displayName);
+  } catch (err) {
+    console.error(`Gagal mengirim ulang email verifikasi ke ${user.email}:`, err);
+    res.status(502).json({ message: "Email belum bisa dikirim. Coba lagi beberapa saat lagi." });
+    return;
+  }
+  res.json({ message: `Tautan verifikasi dikirim ke ${user.email}.` });
+}
 
 /**
  * POST /api/auth/forgot-password: { email }. Jawabannya selalu sama untuk email terdaftar atau tidak,

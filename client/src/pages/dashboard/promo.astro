@@ -239,7 +239,7 @@ if (!user) return Astro.redirect("/login");
       formError.classList.remove("hidden");
     };
     if (!form.checkValidity()) {
-      const invalid = form.querySelector<HTMLInputElement>(":invalid");
+      const invalid = form.querySelector<HTMLInputElement>("input:invalid, textarea:invalid, select:invalid");
       const label = invalid ? form.querySelector(`label[for="${invalid.id}"]`)?.textContent?.trim() : null;
       showError(label ? `Periksa "${label}". ${invalid?.validationMessage ?? ""}` : "Periksa isian form.");
       invalid?.focus();

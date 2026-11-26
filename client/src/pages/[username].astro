@@ -11,14 +11,18 @@ if (rawUsername.startsWith("@")) return Astro.redirect(`/${encodeURIComponent(ra
 const username = rawUsername;
 
 let store: PublicStoreProfile | null = null;
+/** Toko dinonaktifkan admin (phishing/penipuan): isi toko tidak dikirim API, hanya status. */
+let suspended = false;
 try {
   const res = await ssrFetch(`/api/store/${encodeURIComponent(username)}`);
   if (res.status === 404) return Astro.redirect("/404");
+  if (res.status === 403) suspended = Boolean(((await res.json()) as { suspended?: boolean }).suspended);
   if (res.ok) store = (await res.json()) as PublicStoreProfile;
 } catch {
   // API mati atau tidak terjangkau: tampilkan state error di bawah.
 }
-if (!store) Astro.response.status = 502;
+if (suspended) Astro.response.status = 403;
+else if (!store) Astro.response.status = 502;
 
 // Warna tema kreator dipakai di cincin avatar. Jika terlalu gelap untuk latar malam, diganti indigo.
 const accent = accentOnDark(safeHex(store?.themeColor));
@@ -37,14 +41,37 @@ const priceLabel = (item: StoreItem) => (item.price && item.price > 0 ? formatRu
 const soldOut = (item: StoreItem) => item.stock !== null && item.stock <= 0;
 const canCheckout = (item: StoreItem) => paymentsEnabled && !soldOut(item) && (item.price ?? 0) > 0;
 
-const title = store ? `${store.displayName} (@${store.username})` : "Toko tidak bisa dimuat";
+const title = store
+  ? `${store.displayName} (@${store.username})`
+  : suspended
+    ? "Toko dinonaktifkan"
+    : "Toko tidak bisa dimuat";
 const description = store ? (store.bio ?? `Link dan produk dari ${store.displayName}.`) : undefined;
 const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?? null;
 ---
 
-<Base title={title} description={description} ogImage={ogImage}>
+<Base title={title} description={description} ogImage={ogImage} noindex={suspended}>
   {
-    !store ? (
+    suspended ? (
+      <main class="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-5 py-12">
+        <div class="glass-card rounded-3xl border-rose-400/20 p-6 sm:p-8">
+          <span class="flex size-12 items-center justify-center rounded-full bg-rose-400/15 text-rose-300 ring-8 ring-rose-400/10" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-6">
+              <path d="M12 3 3 7v5c0 5 3.8 8.4 9 9 5.2-.6 9-4 9-9V7l-9-4Z" />
+              <path d="M12 8v5M12 16.5v.5" />
+            </svg>
+          </span>
+          <h1 class="mt-5 text-2xl font-bold">Toko ini dinonaktifkan</h1>
+          <p class="mt-2 text-slate-300">
+            Toko ini telah dinonaktifkan sementara karena melanggar kebijakan keamanan atau terindikasi penipuan.
+          </p>
+          <p class="mt-3 text-sm text-slate-400">
+            Jangan melakukan pembayaran atau memasukkan data login dari tautan yang mengarah ke toko ini.
+          </p>
+          <a href="/" class="btn-ghost mt-6">Ke beranda</a>
+        </div>
+      </main>
+    ) : !store ? (
       <main class="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-5 py-12">
         <div class="glass-card rounded-3xl p-6">
           <h1 class="text-2xl font-bold">Toko belum bisa dimuat</h1>
@@ -208,6 +235,11 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
                         )}
                         <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                           <p class="font-bold tabular-nums text-emerald-300">{priceLabel(product)}</p>
+                          {product.isPhysical && (
+                            <p class="rounded-md border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-xs font-medium text-slate-200">
+                              Dikirim ke alamatmu
+                            </p>
+                          )}
                           {product.isDigital && (
                             <p class="rounded-md border border-cyan-300/25 bg-cyan-400/10 px-1.5 py-0.5 text-xs font-medium text-cyan-200">
                               Produk digital
@@ -232,6 +264,7 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
                               data-title={product.title}
                               data-price={product.price ?? 0}
                               data-stock={product.stock ?? ""}
+                              data-physical={product.isPhysical ? "1" : ""}
                               aria-label={`Beli ${product.title}`}
                             >
                               Beli
@@ -265,10 +298,64 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
             Dibuat dengan <BrandLogo size="sm" badge={false} />
           </p>
           <p class="mt-1 flex flex-wrap justify-center text-xs">
+            <button type="button" id="report-open" class="inline-flex min-h-11 items-center gap-1.5 px-2 text-slate-400 hover:text-rose-200">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3.5" aria-hidden="true">
+                <path d="M5 21V4M5 4h11l-2 4 2 4H5" />
+              </svg>
+              Laporkan toko
+            </button>
             <a href="/kebijakan-refund" class="inline-flex min-h-11 items-center px-2 text-slate-400 hover:text-white">Kebijakan Refund</a>
             <a href="/kebijakan-privasi" class="inline-flex min-h-11 items-center px-2 text-slate-400 hover:text-white">Kebijakan Privasi</a>
           </p>
         </footer>
+
+        <dialog
+          id="report"
+          aria-labelledby="report-title"
+          class="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md overflow-y-auto bg-transparent p-0 text-slate-200 backdrop:bg-black/70 backdrop:backdrop-blur-md"
+          data-username={store.username}
+        >
+          <div class="dialog-panel glass-card rounded-3xl border-white/20 bg-night-raised/80 p-6">
+            <form id="report-form" novalidate>
+              <h2 id="report-title" class="text-xl font-bold">Laporkan toko ini</h2>
+              <p class="mt-1 text-sm text-slate-400">Laporan ditinjau admin. Identitasmu tidak ditampilkan ke penjual.</p>
+              <fieldset class="mt-5">
+                <legend class="label">Alasan</legend>
+                <div class="mt-1 grid gap-2">
+                  {[
+                    ["PHISHING", "Phishing atau tautan palsu"],
+                    ["PENIPUAN", "Penipuan transaksi"],
+                    ["KONTEN_TERLARANG", "Konten terlarang"],
+                    ["LAINNYA", "Lainnya"],
+                  ].map(([value, label], i) => (
+                    <label class="flex min-h-11 items-center gap-3 rounded-xl border border-white/10 px-3 text-sm has-[:checked]:border-rose-300/40 has-[:checked]:bg-rose-400/10 has-[:checked]:text-white has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-indigo-300">
+                      <input type="radio" name="reason" value={value} checked={i === 0} class="size-4 accent-rose-400" />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <div class="mt-4">
+                <label for="report-description" class="label">Apa yang terjadi?</label>
+                <textarea id="report-description" name="description" rows="4" required minlength="10" maxlength="1000" class="glass-input mt-1 py-2.5" />
+              </div>
+              <div class="mt-4">
+                <label for="report-email" class="label">Email kamu (opsional, jika admin perlu menghubungi)</label>
+                <input id="report-email" name="reporterEmail" type="email" autocomplete="email" class="glass-input mt-1" />
+              </div>
+              <p id="report-error" role="alert" class="mt-4 hidden rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200" />
+              <div class="mt-5 grid gap-2 sm:grid-cols-2">
+                <button type="submit" id="report-submit" class="btn-glow rounded-xl sm:order-2">Kirim laporan</button>
+                <button type="button" data-report-close class="btn-ghost sm:order-1">Batal</button>
+              </div>
+            </form>
+            <div id="report-done" hidden>
+              <h2 class="text-xl font-bold" tabindex="-1" id="report-done-title">Laporan terkirim</h2>
+              <p class="mt-2 text-slate-300">Terima kasih. Admin akan meninjau toko ini.</p>
+              <button type="button" data-report-close class="btn-ghost mt-6 w-full">Tutup</button>
+            </div>
+          </div>
+        </dialog>
 
         {paymentsEnabled && (
           <dialog
@@ -321,6 +408,28 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
                     <label for="buyer-note" class="label">Catatan untuk penjual (opsional)</label>
                     <textarea id="buyer-note" name="note" rows="2" maxlength="300" class="glass-input mt-1 py-2.5" />
                   </div>
+                  {/* Hanya untuk barang fisik. Alamat hanya terlihat oleh penjual, tidak tampil di struk publik. */}
+                  <fieldset id="shipping-fields" class="space-y-4 rounded-2xl border border-white/10 p-3" hidden>
+                    <legend class="px-1 text-sm font-semibold text-white">Pengiriman</legend>
+                    <div>
+                      <label for="shipping-phone" class="label">Nomor WhatsApp/HP</label>
+                      <input id="shipping-phone" name="shippingPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="081234567890" class="glass-input mt-1" />
+                    </div>
+                    <div>
+                      <label for="shipping-address" class="label">Alamat pengiriman lengkap</label>
+                      <textarea
+                        id="shipping-address"
+                        name="shippingAddress"
+                        rows="3"
+                        minlength="15"
+                        maxlength="500"
+                        autocomplete="street-address"
+                        aria-describedby="shipping-address-hint"
+                        class="glass-input mt-1 py-2.5"
+                      />
+                      <p id="shipping-address-hint" class="mt-1.5 text-xs text-slate-400">Jalan, nomor rumah, kelurahan, kota, dan kode pos.</p>
+                    </div>
+                  </fieldset>
                   <div>
                     <label for="coupon-code" class="label">Kode promo (opsional)</label>
                     <div class="mt-1 flex gap-2">
@@ -520,7 +629,12 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
 
     document.querySelectorAll<HTMLButtonElement>(".buy-button").forEach((button) => {
       button.addEventListener("click", () => {
-        const { id = "", title = "", price = "0", stock = "" } = button.dataset;
+        const { id = "", title = "", price = "0", stock = "", physical = "" } = button.dataset;
+        // Kolom pengiriman hanya tampil dan wajib untuk barang fisik.
+        const needsShipping = physical === "1";
+        $("shipping-fields").hidden = !needsShipping;
+        $<HTMLInputElement>("shipping-phone").required = needsShipping;
+        $<HTMLTextAreaElement>("shipping-address").required = needsShipping;
         track(`type=click&itemId=${id}`);
         current = { id, title, price: Number(price), max: stock === "" ? 99 : Math.min(99, Number(stock)), qty: 1 };
         $("checkout-title").textContent = title;
@@ -599,7 +713,7 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
         return;
       }
       if (!form.checkValidity()) {
-        const invalid = form.querySelector<HTMLInputElement>(":invalid");
+        const invalid = form.querySelector<HTMLInputElement>("input:invalid, textarea:invalid, select:invalid");
         const label = invalid ? form.querySelector(`label[for="${invalid.id}"]`)?.textContent : null;
         showError(label ? `Periksa kolom "${label}". ${invalid?.validationMessage ?? ""}` : "Lengkapi form.");
         invalid?.focus();
@@ -620,6 +734,10 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
             buyerName: data.get("buyerName"),
             buyerEmail: data.get("buyerEmail"),
             note: data.get("note"),
+            ...(!$("shipping-fields").hidden && {
+              shippingPhone: data.get("shippingPhone"),
+              shippingAddress: data.get("shippingAddress"),
+            }),
             ...(coupon && { couponCode: coupon.code }),
           }),
         });
@@ -656,6 +774,72 @@ const ogImage = store?.avatarUrl ?? products.find((p) => p.imageUrl)?.imageUrl ?
       } finally {
         submit.disabled = false;
         submit.textContent = label;
+      }
+    });
+  }
+</script>
+
+<script>
+  import { API_URL, errorMessage } from "../lib/api";
+
+  // Laporan toko: blok terpisah agar tetap berjalan walau pembayaran online nonaktif.
+  const reportDialog = document.querySelector<HTMLDialogElement>("#report");
+  if (reportDialog) {
+    const form = reportDialog.querySelector<HTMLFormElement>("#report-form")!;
+    const done = reportDialog.querySelector<HTMLElement>("#report-done")!;
+    const errorBox = reportDialog.querySelector<HTMLElement>("#report-error")!;
+    const submit = reportDialog.querySelector<HTMLButtonElement>("#report-submit")!;
+    const showError = (m: string | null) => {
+      errorBox.textContent = m ?? "";
+      errorBox.classList.toggle("hidden", !m);
+    };
+
+    document.querySelector("#report-open")?.addEventListener("click", () => {
+      form.hidden = false;
+      done.hidden = true;
+      showError(null);
+      reportDialog.showModal();
+    });
+    reportDialog.querySelectorAll("[data-report-close]").forEach((b) => b.addEventListener("click", () => reportDialog.close()));
+    reportDialog.addEventListener("click", (e) => {
+      if (e.target === reportDialog) reportDialog.close();
+    });
+    form.addEventListener("input", () => showError(null));
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!form.checkValidity()) {
+        const invalid = form.querySelector<HTMLInputElement>("input:invalid, textarea:invalid, select:invalid");
+        showError(
+          invalid?.id === "report-description"
+            ? "Jelaskan apa yang terjadi, minimal 10 karakter."
+            : invalid?.validationMessage || "Periksa isian form.",
+        );
+        invalid?.focus();
+        return;
+      }
+      const data = Object.fromEntries(new FormData(form));
+      submit.disabled = true;
+      submit.textContent = "Mengirim...";
+      try {
+        const res = await fetch(`${API_URL}/api/reports`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...data, targetUsername: reportDialog.dataset.username }),
+        });
+        if (!res.ok) {
+          showError(await errorMessage(res, "Laporan gagal dikirim."));
+          return;
+        }
+        form.reset();
+        form.hidden = true;
+        done.hidden = false;
+        reportDialog.querySelector<HTMLElement>("#report-done-title")!.focus();
+      } catch {
+        showError("Tidak bisa terhubung ke server.");
+      } finally {
+        submit.disabled = false;
+        submit.textContent = "Kirim laporan";
       }
     });
   }

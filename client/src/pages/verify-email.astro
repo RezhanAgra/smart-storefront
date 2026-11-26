@@ -1,0 +1,56 @@
+---
+import AuthCard from "../components/AuthCard.astro";
+import { errorMessage, getSessionUser, ssrFetch } from "../lib/api";
+
+// Token diproses di server saat halaman dibuka, jadi tautan dari email langsung berhasil tanpa klik tambahan.
+const token = Astro.url.searchParams.get("token") ?? "";
+let state: "ok" | "invalid" | "error" = "invalid";
+let message = "Tautan verifikasi tidak lengkap. Buka tautan langsung dari email, atau kirim ulang dari dashboard.";
+
+if (token) {
+  try {
+    const res = await ssrFetch(`/api/auth/verify-email?token=${encodeURIComponent(token)}`);
+    if (res.ok) {
+      state = "ok";
+      message = "Email kamu sudah terverifikasi. Sekarang kamu bisa mencairkan dana penjualan.";
+    } else if (res.status >= 500) {
+      state = "error";
+      message = "Server sedang bermasalah. Coba buka tautan ini lagi beberapa saat lagi.";
+    } else {
+      message = await errorMessage(res, message);
+    }
+  } catch {
+    state = "error";
+    message = "Server tidak bisa dihubungi. Coba buka tautan ini lagi beberapa saat lagi.";
+  }
+}
+if (state !== "ok") Astro.response.status = state === "error" ? 502 : 400;
+
+const loggedIn = Boolean(await getSessionUser(Astro.cookies.get("token")?.value));
+const heading = state === "ok" ? "Email terverifikasi" : "Verifikasi belum berhasil";
+---
+
+<AuthCard title={`${heading} | smart-storefront`} heading={heading} intro="Verifikasi email akun penjual">
+  <div class="mt-6 flex items-start gap-4">
+    <span
+      class:list={[
+        "flex size-12 shrink-0 items-center justify-center rounded-full ring-8",
+        state === "ok" ? "bg-emerald-400/15 text-emerald-300 ring-emerald-400/10" : "bg-amber-400/15 text-amber-300 ring-amber-400/10",
+      ]}
+      aria-hidden="true"
+    >
+      {
+        state === "ok" ? (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="size-6"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
+        ) : (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" class="size-6"><path d="M12 8v5M12 16.5v.5" /></svg>
+        )
+      }
+    </span>
+    <p class="text-slate-200" role={state === "ok" ? "status" : "alert"}>{message}</p>
+  </div>
+
+  <a href={loggedIn ? "/dashboard" : "/login"} class="btn-glow mt-8 w-full rounded-xl">
+    {loggedIn ? "Buka dashboard" : "Masuk ke akunmu"}
+  </a>
+</AuthCard>

@@ -1,0 +1,225 @@
+---
+import Base from "../../layouts/Base.astro";
+import DashboardNav from "../../components/DashboardNav.astro";
+import { requireUser } from "../../lib/api";
+
+const user = await requireUser(Astro);
+if (!user) return Astro.redirect("/login");
+
+const banks = ["BCA", "BNI", "BRI", "Mandiri", "BSI", "CIMB Niaga", "Permata", "GoPay", "OVO", "DANA", "ShopeePay"];
+---
+
+<Base title="Pencairan Dana | smart-storefront" noindex>
+  <DashboardNav user={user} active="payouts" />
+
+  <main class="mx-auto max-w-6xl px-4 py-8">
+    <h1 class="text-2xl font-bold">Pencairan dana</h1>
+    <p class="mt-1 text-sm text-slate-400">
+      Saldo berasal dari pesanan yang sudah lunas. Admin mentransfer dana ke rekeningmu setelah pengajuan disetujui.
+    </p>
+
+    <div id="payouts" aria-live="polite">
+      <p data-state="loading" class="mt-8 text-slate-400">Memuat saldo...</p>
+      <div data-state="error" hidden class="glass-card mt-8 rounded-2xl p-6">
+        <p id="error-text" class="text-rose-200">Saldo tidak bisa dimuat.</p>
+        <button type="button" id="retry" class="btn-ghost mt-4">Coba lagi</button>
+      </div>
+
+      <div data-state="ready" hidden>
+        <dl class="mt-6 grid gap-3 sm:grid-cols-3">
+          <div class="glass-card rounded-2xl p-5 sm:col-span-1">
+            <dt class="text-sm text-slate-400">Saldo tersedia</dt>
+            <dd id="available" class="mt-1 font-display text-3xl font-bold tabular-nums text-emerald-300 break-all">-</dd>
+          </div>
+          <div class="glass-card rounded-2xl p-5">
+            <dt class="text-sm text-slate-400">Total omzet lunas</dt>
+            <dd id="revenue" class="mt-1 font-display text-2xl font-bold tabular-nums text-white break-all">-</dd>
+          </div>
+          <div class="glass-card rounded-2xl p-5">
+            <dt class="text-sm text-slate-400">Sudah & sedang ditarik</dt>
+            <dd id="withdrawn" class="mt-1 font-display text-2xl font-bold tabular-nums text-white break-all">-</dd>
+            <dd id="pending-note" class="mt-1 text-xs text-amber-200" hidden></dd>
+          </div>
+        </dl>
+
+        <div class="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+          <form id="payout-form" class="glass-card rounded-2xl p-5 sm:p-6" novalidate>
+            <h2 class="text-lg font-bold">Ajukan penarikan</h2>
+            <p id="blocked" class="mt-3 hidden rounded-xl border border-amber-300/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-100"></p>
+
+            <fieldset id="payout-fields" class="mt-4 space-y-4 disabled:opacity-60">
+              <div>
+                <label for="p-amount" class="label">Nominal (Rp)</label>
+                <input id="p-amount" name="amount" type="number" required min="50000" step="1" inputmode="numeric" aria-describedby="p-amount-hint" class="glass-input mt-1" />
+                <p id="p-amount-hint" class="mt-1.5 text-xs text-slate-400">Minimal Rp 50.000.</p>
+              </div>
+              <div>
+                <label for="p-bank" class="label">Bank atau e-wallet</label>
+                <input id="p-bank" name="bankName" required maxlength="40" list="bank-list" autocomplete="off" placeholder="BCA" class="glass-input mt-1" />
+                <datalist id="bank-list">{banks.map((b) => <option value={b} />)}</datalist>
+              </div>
+              <div>
+                <label for="p-account" class="label">Nomor rekening / nomor akun</label>
+                <input id="p-account" name="accountNumber" required inputmode="numeric" maxlength="34" autocomplete="off" class="glass-input mt-1 font-mono" />
+              </div>
+              <div>
+                <label for="p-holder" class="label">Atas nama</label>
+                <input id="p-holder" name="accountHolder" required maxlength="80" autocomplete="name" aria-describedby="p-holder-hint" class="glass-input mt-1" />
+                <p id="p-holder-hint" class="mt-1.5 text-xs text-slate-400">Harus sama dengan nama pemilik rekening, agar transfer tidak ditolak bank.</p>
+              </div>
+            </fieldset>
+
+            <p id="form-error" role="alert" class="mt-4 hidden rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200"></p>
+            <button type="submit" id="submit" class="btn-glow mt-5 w-full rounded-xl">Ajukan pencairan</button>
+          </form>
+
+          <section aria-labelledby="history-heading">
+            <h2 id="history-heading" class="text-lg font-bold">Riwayat pengajuan</h2>
+            <p id="history-empty" class="mt-4 rounded-2xl border border-dashed border-white/15 p-8 text-center text-slate-300" hidden>
+              Belum ada pengajuan pencairan.
+            </p>
+            <ul id="history" class="mt-4 space-y-3"></ul>
+          </section>
+        </div>
+      </div>
+    </div>
+  </main>
+</Base>
+
+<script>
+  import { errorMessage, formatRupiah } from "../../lib/api";
+  import { api, formatDateTime, redirectIfUnauthorized, showState } from "../../lib/client";
+  import { toast } from "../../lib/toast";
+  import type { Payout, PayoutStatus, PayoutSummary } from "../../types/store";
+
+  const $ = <T extends Element>(s: string) => document.querySelector<T>(s)!;
+  const root = $<HTMLElement>("#payouts");
+  const form = $<HTMLFormElement>("#payout-form");
+  const fields = $<HTMLFieldSetElement>("#payout-fields");
+  const submit = $<HTMLButtonElement>("#submit");
+  const formError = $<HTMLElement>("#form-error");
+  const amount = $<HTMLInputElement>("#p-amount");
+
+  // Status ditulis sebagai teks dan warna sekaligus.
+  const BADGE: Record<PayoutStatus, { label: string; cls: string }> = {
+    PENDING: { label: "Diproses", cls: "border-amber-400/30 bg-amber-400/10 text-amber-200" },
+    APPROVED: { label: "Ditransfer", cls: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200" },
+    REJECTED: { label: "Ditolak", cls: "border-rose-400/30 bg-rose-400/10 text-rose-200" },
+  };
+
+  const maskAccount = (n: string) => (n.length > 4 ? `•••• ${n.slice(-4)}` : n);
+
+  function renderHistory(history: Payout[]) {
+    $<HTMLElement>("#history-empty").hidden = history.length > 0;
+    $("#history").replaceChildren(
+      ...history.map((p) => {
+        const li = document.createElement("li");
+        li.className = "glass-card rounded-2xl p-4";
+        const top = document.createElement("div");
+        top.className = "flex flex-wrap items-start justify-between gap-2";
+        const amountEl = document.createElement("p");
+        amountEl.className = "font-display text-lg font-bold tabular-nums text-white";
+        amountEl.textContent = formatRupiah(p.amount);
+        const badge = document.createElement("span");
+        badge.className = `rounded-full border px-2.5 py-0.5 text-xs font-semibold ${BADGE[p.status].cls}`;
+        badge.textContent = BADGE[p.status].label;
+        top.append(amountEl, badge);
+        const meta = document.createElement("p");
+        meta.className = "mt-1 text-sm text-slate-300 break-words";
+        meta.textContent = `${p.bankName} ${maskAccount(p.accountNumber)} a.n. ${p.accountHolder}`;
+        const date = document.createElement("p");
+        date.className = "mt-0.5 text-xs text-slate-400";
+        date.textContent = `Diajukan ${formatDateTime(p.createdAt)}`;
+        li.append(top, meta, date);
+        if (p.adminNote) {
+          const note = document.createElement("p");
+          note.className = "mt-2 rounded-lg bg-white/[0.04] px-3 py-2 text-xs text-slate-300 break-words";
+          note.textContent = `Catatan admin: ${p.adminNote}`;
+          li.append(note);
+        }
+        return li;
+      }),
+    );
+  }
+
+  function render(s: PayoutSummary) {
+    $("#available").textContent = formatRupiah(s.availableBalance);
+    $("#revenue").textContent = formatRupiah(s.totalRevenue);
+    $("#withdrawn").textContent = formatRupiah(s.totalWithdrawn);
+    const pending = $<HTMLElement>("#pending-note");
+    pending.hidden = s.pendingWithdrawal === 0;
+    pending.textContent = `${formatRupiah(s.pendingWithdrawal)} masih diproses admin.`;
+
+    // Alasan form dikunci ditulis jelas, bukan sekadar tombol mati.
+    const blocked = $<HTMLElement>("#blocked");
+    const reason = s.isSuspended
+      ? "Toko sedang dinonaktifkan admin, jadi pencairan dana ditahan."
+      : !s.emailVerified
+        ? "Verifikasi email dulu (lihat banner di atas) sebelum mencairkan dana."
+        : s.availableBalance < s.minimumPayout
+          ? `Saldo tersedia belum mencapai minimal ${formatRupiah(s.minimumPayout)}.`
+          : "";
+    blocked.textContent = reason;
+    blocked.classList.toggle("hidden", !reason);
+    fields.disabled = submit.disabled = Boolean(reason);
+    amount.max = String(s.availableBalance);
+    renderHistory(s.history);
+  }
+
+  async function load() {
+    showState(root, "loading");
+    try {
+      const res = await api("/payouts/summary");
+      if (redirectIfUnauthorized(res)) return;
+      if (!res.ok) throw new Error(await errorMessage(res, "Saldo tidak bisa dimuat."));
+      render((await res.json()) as PayoutSummary);
+      showState(root, "ready");
+    } catch (err) {
+      $("#error-text").textContent = err instanceof TypeError ? "Tidak bisa terhubung ke server." : (err as Error).message;
+      showState(root, "error");
+    }
+  }
+
+  const showError = (m: string | null) => {
+    formError.textContent = m ?? "";
+    formError.classList.toggle("hidden", !m);
+  };
+  form.addEventListener("input", () => showError(null));
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!form.checkValidity()) {
+      const invalid = form.querySelector<HTMLInputElement>("input:invalid, textarea:invalid, select:invalid");
+      const label = invalid ? form.querySelector(`label[for="${invalid.id}"]`)?.textContent?.trim() : null;
+      showError(label ? `Periksa "${label}". ${invalid?.validationMessage ?? ""}` : "Periksa isian form.");
+      invalid?.focus();
+      return;
+    }
+    const data = Object.fromEntries(new FormData(form));
+    const nominal = formatRupiah(Number(data.amount));
+    if (!confirm(`Ajukan pencairan ${nominal} ke ${data.bankName} ${data.accountNumber} a.n. ${data.accountHolder}?`)) return;
+
+    submit.disabled = true;
+    submit.textContent = "Mengajukan...";
+    try {
+      const res = await api("/payouts", { method: "POST", body: JSON.stringify({ ...data, amount: Number(data.amount) }) });
+      if (redirectIfUnauthorized(res)) return;
+      if (!res.ok) {
+        showError(await errorMessage(res, "Pengajuan gagal."));
+        submit.disabled = false;
+        return;
+      }
+      form.reset();
+      toast(`Pengajuan ${nominal} terkirim. Admin akan memprosesnya.`);
+      await load();
+    } catch {
+      showError("Tidak bisa terhubung ke server.");
+      submit.disabled = false;
+    } finally {
+      submit.textContent = "Ajukan pencairan";
+    }
+  });
+
+  $("#retry").addEventListener("click", () => void load());
+  void load();
+</script>

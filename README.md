@@ -110,6 +110,16 @@ Gambar hasil upload disimpan di `server/uploads/` (tidak masuk git). Untuk produ
 | GET | `/api/orders?status=PAID\|PENDING\|FAILED` | ya | Pesanan milik penjual, terbaru dulu (maks. 200) |
 | GET | `/api/orders/status/:orderCode` | | Struk publik: tanpa email, catatan, atau id internal |
 | GET | `/api/health` | | Ping database. 200 `{ status: "ok", timestamp }` atau 503 |
+| GET | `/api/auth/verify-email?token=` | | Konfirmasi email (token sekali pakai, berlaku 24 jam) |
+| POST | `/api/auth/resend-verification` | ya | Kirim ulang tautan verifikasi, maksimal sekali per menit |
+| PATCH | `/api/orders/:id/tracking` | ya | `{ trackingNumber }` untuk pesanan barang fisik yang lunas. Pembeli dikabari lewat email |
+| GET | `/api/payouts/summary` | ya | Omzet lunas, total ditarik, saldo tersedia, riwayat pengajuan |
+| POST | `/api/payouts` | ya | `{ amount, bankName, accountNumber, accountHolder }`. Wajib email terverifikasi, minimal Rp 50.000, tidak melebihi saldo |
+| POST | `/api/reports` | | Laporkan toko: `{ targetUsername, reason, description, reporterEmail? }`. Maks. 5 laporan per jam per IP |
+| GET | `/api/admin/overview` | admin | Semua toko, laporan terbaru, pengajuan pencairan `PENDING` |
+| PATCH | `/api/admin/users/:id/suspend` | admin | `{ isSuspended, suspendedReason }` |
+| PATCH | `/api/admin/reports/:id` | admin | `{ status: RESOLVED \| DISMISSED }` |
+| PATCH | `/api/admin/payouts/:id` | admin | `{ status: APPROVED \| REJECTED, adminNote }` (alasan wajib saat menolak) |
 | GET/POST | `/api/coupons` | ya | Daftar dan buat kode promo: `code` (3-20 huruf/angka), `type` (`PERCENT` 1-90 / `FIXED` Rupiah), `value`, `maxUses`, `expiresAt` |
 | PUT/DELETE | `/api/coupons/:id` | ya | Aktif/nonaktif (`isActive`) dan hapus |
 | POST | `/api/checkout/coupon` | | Cek kode promo sebelum bayar: `{ itemId, quantity, code }` → `{ code, subtotal, discountAmount, total }` |
@@ -138,6 +148,9 @@ Username `login`, `logout`, `register`, `dashboard`, `order`, `demo`, `api`, `ad
 | `/dashboard/orders` | Riwayat transaksi (termasuk kode promo dan unduhan file) |
 | `/dashboard/promo` | Kode promo: buat, aktif/nonaktif, hapus, lihat pemakaian |
 | `/dashboard/qr` | QR Code kasir menuju halaman toko: cetak poster, unduh PNG/SVG |
+| `/dashboard/payouts` | Saldo dan pengajuan pencairan dana |
+| `/verify-email?token=` | Konfirmasi email dari tautan yang dikirim saat daftar |
+| `/admin` | Panel admin (role `ADMIN`): laporan, status toko, persetujuan pencairan |
 | `/dashboard/settings` | Foto profil, nama toko, bio, warna aksen, tautan sosial, ganti password, hapus akun |
 
 ## Kode promo dan produk digital
@@ -259,6 +272,16 @@ Dengan `DOMAIN_NAME=localhost`, Caddy memakai sertifikat lokal (browser menampil
 - MongoDB berjalan tanpa autentikasi, tetapi hanya bisa diakses dari jaringan internal Docker (tidak ada port yang dibuka ke host). Jika MongoDB dipindah ke server lain atau dibuka ke luar, aktifkan autentikasi dan keyFile replica set.
 - Rate limit disimpan di memori proses `server`: reset saat container restart, dan tidak dibagi jika `server` dijalankan lebih dari satu replika.
 - `trust proxy` = 1 sesuai satu Caddy di depan API. Caddy mengganti `X-Forwarded-For` kiriman klien, jadi header palsu tidak bisa dipakai untuk menghindari rate limit.
+
+## Verifikasi email, pengiriman, pencairan dana, dan moderasi
+
+- **Dua jenis "verifikasi":** `emailVerified` berarti penjual sudah mengklik tautan di email dan menjadi syarat pencairan dana. `isVerified` adalah badge centang di halaman toko yang diatur manual oleh admin (lihat di bawah). Keduanya sengaja dipisah, agar konfirmasi email tidak otomatis memberi badge "terverifikasi" ke setiap toko.
+- **Tanpa SMTP** (`SMTP_HOST` kosong), tautan verifikasi dicetak di log server. Di production, isi SMTP agar penjual bisa memverifikasi email.
+- **Barang fisik:** centang "Produk fisik" di item. Checkout lalu mewajibkan nomor WhatsApp/HP dan alamat. Alamat hanya terlihat oleh penjual di `/dashboard/orders`, tidak di struk publik `/order/<kode>` (yang bisa dibuka siapa pun yang tahu kodenya). Struk hanya menampilkan nomor resi.
+- **Pencairan dana:** saldo = total pesanan `PAID` dikurangi pengajuan `PENDING`/`APPROVED`. Admin mentransfer manual ke rekening penjual, lalu menekan "Setujui Transfer". Pengajuan bersamaan diserialkan lewat transaksi MongoDB, jadi saldo tidak bisa ditarik dua kali. Belum ada pemotongan biaya platform maupun penanganan refund: pesanan yang di-refund lewat Midtrans tetap terhitung omzet sampai statusnya diubah.
+- **Moderasi:** toko yang dinonaktifkan menampilkan halaman peringatan (HTTP 403), tidak bisa menerima checkout, tidak muncul di sitemap, dan pencairan dananya ditahan. Penjual tetap bisa login dan melihat alasannya di dashboard.
+- **Akun admin** dibuat oleh `npm run seed` dari `ADMIN_EMAIL` dan `ADMIN_PASSWORD`. Di development, tanpa variabel itu dipakai `admin@smartstore.id` / `admin1234`. Di production seed menolak password contoh atau yang lebih pendek dari 12 karakter. Untuk menjadikan akun lain admin: `mongosh smart_storefront --eval 'db.User.updateOne({email:"kamu@domain.id"},{$set:{role:"ADMIN"}})'`.
+- **Rate limit** 100 request / 15 menit per IP juga berlaku untuk admin. Panel admin memperbarui data lokal setelah setiap aksi (tanpa memuat ulang semuanya) agar tidak cepat mengenai batas itu.
 
 ## Badge verifikasi
 

@@ -1,0 +1,456 @@
+---
+import Base from "../../layouts/Base.astro";
+import DashboardNav from "../../components/DashboardNav.astro";
+import { requireUser } from "../../lib/api";
+
+// Role dicek di server Astro dan sekali lagi di API (requireAdmin) untuk setiap aksi.
+const user = await requireUser(Astro);
+if (!user || user.role !== "ADMIN") return Astro.redirect("/login");
+
+const tabs = [
+  { id: "reports", label: "Laporan Masuk" },
+  { id: "users", label: "Kelola Toko" },
+  { id: "payouts", label: "Pencairan Dana" },
+] as const;
+---
+
+<Base title="Panel Admin | smart-storefront" noindex>
+  <DashboardNav user={user} active="admin" />
+
+  <main class="mx-auto max-w-6xl px-4 py-8">
+    <h1 class="text-2xl font-bold">Panel admin</h1>
+    <p class="mt-1 text-sm text-slate-400">Moderasi laporan, status toko, dan persetujuan pencairan dana penjual.</p>
+
+    <div role="tablist" aria-label="Bagian panel admin" class="mt-6 flex gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.04] p-1">
+      {
+        tabs.map((t, i) => (
+          <button
+            type="button"
+            role="tab"
+            id={`tab-${t.id}`}
+            aria-controls={`panel-${t.id}`}
+            aria-selected={i === 0 ? "true" : "false"}
+            tabindex={i === 0 ? 0 : -1}
+            class="flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 text-sm font-medium text-slate-300 transition-colors hover:text-white aria-selected:bg-white/10 aria-selected:text-white"
+          >
+            {t.label}
+            <span data-count={t.id} class="rounded-full bg-white/10 px-2 py-0.5 text-xs tabular-nums" hidden></span>
+          </button>
+        ))
+      }
+    </div>
+
+    <div id="admin" class="mt-6" aria-live="polite">
+      <p data-state="loading" class="text-slate-400">Memuat data admin...</p>
+      <div data-state="error" hidden class="glass-card rounded-2xl p-6">
+        <p id="error-text" class="text-rose-200">Data admin tidak bisa dimuat.</p>
+        <button type="button" id="retry" class="btn-ghost mt-4">Coba lagi</button>
+      </div>
+
+      <div data-state="ready" hidden>
+        <section role="tabpanel" id="panel-reports" aria-labelledby="tab-reports" tabindex="0">
+          <p data-empty class="rounded-2xl border border-dashed border-white/15 p-8 text-center text-slate-300" hidden>Belum ada laporan.</p>
+          <ul data-list class="space-y-3"></ul>
+        </section>
+
+        <section role="tabpanel" id="panel-users" aria-labelledby="tab-users" tabindex="0" hidden>
+          <div class="glass-card overflow-hidden rounded-2xl">
+            <table class="w-full text-left text-sm max-md:block">
+              <caption class="sr-only">Semua toko terdaftar</caption>
+              <thead class="border-b border-white/10 bg-white/[0.03] text-slate-400 max-md:sr-only">
+                <tr>
+                  <th scope="col" class="px-4 py-3 font-medium">Toko</th>
+                  <th scope="col" class="px-4 py-3 font-medium">Email</th>
+                  <th scope="col" class="px-4 py-3 font-medium">Aktivitas</th>
+                  <th scope="col" class="px-4 py-3 font-medium">Status</th>
+                  <th scope="col" class="px-4 py-3 font-medium"><span class="sr-only">Aksi</span></th>
+                </tr>
+              </thead>
+              <tbody data-list class="divide-y divide-white/10 max-md:block"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section role="tabpanel" id="panel-payouts" aria-labelledby="tab-payouts" tabindex="0" hidden>
+          <p data-empty class="rounded-2xl border border-dashed border-white/15 p-8 text-center text-slate-300" hidden>
+            Tidak ada pengajuan pencairan yang menunggu.
+          </p>
+          <ul data-list class="space-y-3"></ul>
+        </section>
+      </div>
+    </div>
+
+    <dialog
+      id="decision"
+      aria-labelledby="decision-title"
+      class="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md overflow-y-auto bg-transparent p-0 text-slate-200 backdrop:bg-black/70 backdrop:backdrop-blur-md"
+    >
+      <form id="decision-form" class="dialog-panel glass-card rounded-3xl border-white/20 bg-night-raised/80 p-6" novalidate>
+        <h2 id="decision-title" class="text-xl font-bold"></h2>
+        <p id="decision-body" class="mt-2 text-sm text-slate-300 break-words"></p>
+        <label for="decision-note" id="decision-label" class="label mt-4"></label>
+        <textarea id="decision-note" rows="3" maxlength="300" class="glass-input mt-1 py-2.5"></textarea>
+        <p id="decision-error" role="alert" class="mt-3 hidden rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200"></p>
+        <div class="mt-5 grid gap-2 sm:grid-cols-2">
+          <button type="submit" id="decision-confirm" class="btn-glow rounded-xl sm:order-2"></button>
+          <button type="button" id="decision-cancel" class="btn-ghost sm:order-1">Batal</button>
+        </div>
+      </form>
+    </dialog>
+  </main>
+</Base>
+
+<script>
+  import { errorMessage, formatRupiah } from "../../lib/api";
+  import { api, formatDateTime, redirectIfUnauthorized, showState } from "../../lib/client";
+  import { toast } from "../../lib/toast";
+  import type { AdminOverview, ReportReason } from "../../types/store";
+
+  type Report = AdminOverview["reports"][number];
+  type AdminUser = AdminOverview["users"][number];
+  type PendingPayout = AdminOverview["payouts"][number];
+
+  const $ = <T extends Element>(s: string, root: ParentNode = document) => root.querySelector<T>(s)!;
+  const root = $<HTMLElement>("#admin");
+  let data: AdminOverview = { users: [], reports: [], payouts: [] };
+
+  const REASON: Record<ReportReason, string> = {
+    PHISHING: "Phishing / tautan palsu",
+    PENIPUAN: "Penipuan transaksi",
+    KONTEN_TERLARANG: "Konten terlarang",
+    LAINNYA: "Lainnya",
+  };
+  const REPORT_STATUS = {
+    OPEN: { label: "Baru", cls: "border-amber-400/30 bg-amber-400/10 text-amber-200" },
+    RESOLVED: { label: "Ditindak", cls: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200" },
+    DISMISSED: { label: "Diabaikan", cls: "border-white/15 text-slate-300" },
+  } as const;
+
+  const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text?: string) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+  const badge = (label: string, cls: string) => el("span", `inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${cls}`, label);
+  const storeLink = (username: string, name: string) => {
+    const a = el("a", "inline-flex min-h-11 flex-wrap items-center gap-x-1 font-semibold text-white underline-offset-4 hover:underline break-words", name);
+    a.href = `/${username}`;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.append(el("span", "font-normal text-slate-400", `@${username}`), el("span", "sr-only", " (tab baru)"));
+    return a;
+  };
+  const actionButton = (label: string, tone: "danger" | "neutral" | "primary", onClick: (b: HTMLButtonElement) => void) => {
+    const cls = {
+      danger: "min-h-11 rounded-xl border border-rose-400/30 px-3 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-500/10 active:translate-y-px disabled:opacity-50",
+      neutral: "btn-ghost text-sm",
+      primary: "btn-glow rounded-xl px-4 text-sm",
+    }[tone];
+    const b = el("button", cls, label);
+    b.type = "button";
+    b.addEventListener("click", () => onClick(b));
+    return b;
+  };
+
+  // ---------- Dialog keputusan (alasan/catatan) ----------
+  const dialog = $<HTMLDialogElement>("#decision");
+  const note = $<HTMLTextAreaElement>("#decision-note");
+  const decisionError = $<HTMLElement>("#decision-error");
+  let resolveDecision: ((value: string | null) => void) | null = null;
+
+  /** Tampilkan dialog dan kembalikan catatan yang diisi, atau null jika dibatalkan. */
+  function askDecision(opts: { title: string; body: string; label: string; confirm: string; required: boolean; value?: string }) {
+    $("#decision-title").textContent = opts.title;
+    $("#decision-body").textContent = opts.body;
+    $("#decision-label").textContent = opts.label + (opts.required ? "" : " (opsional)");
+    $("#decision-confirm").textContent = opts.confirm;
+    note.value = opts.value ?? "";
+    note.required = opts.required;
+    decisionError.classList.add("hidden");
+    dialog.showModal();
+    note.focus();
+    return new Promise<string | null>((resolve) => (resolveDecision = resolve));
+  }
+  const finish = (value: string | null) => {
+    resolveDecision?.(value);
+    resolveDecision = null;
+    if (dialog.open) dialog.close();
+  };
+  $("#decision-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (note.required && !note.value.trim()) {
+      decisionError.textContent = "Kolom ini wajib diisi.";
+      decisionError.classList.remove("hidden");
+      note.focus();
+      return;
+    }
+    finish(note.value.trim());
+  });
+  $("#decision-cancel").addEventListener("click", () => finish(null));
+  dialog.addEventListener("close", () => finish(null));
+
+  async function send(path: string, body: unknown): Promise<boolean> {
+    try {
+      const res = await api(path, { method: "PATCH", body: JSON.stringify(body) });
+      if (redirectIfUnauthorized(res)) return false;
+      if (!res.ok) {
+        toast(await errorMessage(res, "Aksi gagal."), "error");
+        return false;
+      }
+      return true;
+    } catch {
+      toast("Tidak bisa terhubung ke server.", "error");
+      return false;
+    }
+  }
+
+  /**
+   * Setelah aksi berhasil, data di browser diperbarui langsung (tanpa memuat ulang semua data), supaya
+   * admin tidak cepat menghabiskan rate limit 100 request / 15 menit.
+   */
+  function applySuspension(userId: string, isSuspended: boolean, reason: string | null) {
+    data.users = data.users.map((u) => (u.id === userId ? { ...u, isSuspended, suspendedReason: isSuspended ? reason : null } : u));
+    data.reports = data.reports.map((r) => (r.targetUser.id === userId ? { ...r, targetUser: { ...r.targetUser, isSuspended } } : r));
+    data.payouts = data.payouts.map((p) => (p.seller.id === userId ? { ...p, seller: { ...p.seller, isSuspended } } : p));
+  }
+  function applyReportStatus(id: string, status: Report["status"]) {
+    data.reports = data.reports.map((r) => (r.id === id ? { ...r, status } : r));
+  }
+  function renderAll() {
+    renderReports();
+    renderUsers();
+    renderPayouts();
+    renderCounts();
+  }
+
+  // ---------- Laporan ----------
+  async function suspendFromReport(r: Report) {
+    const reason = await askDecision({
+      title: `Nonaktifkan ${r.targetUser.displayName}?`,
+      body: "Halaman toko langsung tertutup untuk pembeli, checkout dan pencairan dana ditahan. Penjual melihat alasan ini di dashboardnya.",
+      label: "Alasan penonaktifan",
+      confirm: "Nonaktifkan toko",
+      required: true,
+      value: `${REASON[r.reason]}: ${r.description}`.slice(0, 300),
+    });
+    if (reason === null) return;
+    if (!(await send(`/admin/users/${r.targetUser.id}/suspend`, { isSuspended: true, suspendedReason: reason }))) return;
+    applySuspension(r.targetUser.id, true, reason);
+    if (await send(`/admin/reports/${r.id}`, { status: "RESOLVED" })) applyReportStatus(r.id, "RESOLVED");
+    renderAll();
+    toast(`${r.targetUser.displayName} dinonaktifkan dan laporan ditandai ditindak.`);
+  }
+
+  async function setReport(r: Report, status: "RESOLVED" | "DISMISSED") {
+    if (!(await send(`/admin/reports/${r.id}`, { status }))) return;
+    applyReportStatus(r.id, status);
+    renderAll();
+    toast(status === "DISMISSED" ? "Laporan diabaikan." : "Laporan ditandai ditindak.");
+  }
+
+  function renderReports() {
+    const panel = $<HTMLElement>("#panel-reports");
+    // Laporan baru di atas, sisanya urut waktu.
+    const reports = [...data.reports].sort((a, b) => Number(b.status === "OPEN") - Number(a.status === "OPEN"));
+    $<HTMLElement>("[data-empty]", panel).hidden = reports.length > 0;
+    $("[data-list]", panel).replaceChildren(
+      ...reports.map((r) => {
+        const li = el("li", "glass-card rounded-2xl p-4");
+        const head = el("div", "flex flex-wrap items-start justify-between gap-2");
+        const who = el("div", "min-w-0");
+        who.append(storeLink(r.targetUser.username, r.targetUser.displayName));
+        if (r.targetUser.isSuspended) who.append(el("p", "mt-0.5 text-xs text-rose-200", "Toko sudah dinonaktifkan"));
+        head.append(who, badge(REPORT_STATUS[r.status].label, REPORT_STATUS[r.status].cls));
+        li.append(
+          head,
+          el("p", "mt-2 text-sm font-medium text-rose-100", REASON[r.reason]),
+          el("p", "mt-1 whitespace-pre-line text-sm text-slate-200 break-words", r.description),
+          el("p", "mt-2 text-xs text-slate-400", `${formatDateTime(r.createdAt)}${r.reporterEmail ? ` · pelapor ${r.reporterEmail}` : " · pelapor anonim"}`),
+        );
+        if (r.status === "OPEN") {
+          const actions = el("div", "mt-3 flex flex-wrap gap-2 border-t border-white/10 pt-3");
+          if (!r.targetUser.isSuspended) actions.append(actionButton("Nonaktifkan Toko", "danger", () => void suspendFromReport(r)));
+          else actions.append(actionButton("Tandai ditindak", "neutral", () => void setReport(r, "RESOLVED")));
+          actions.append(actionButton("Abaikan Laporan", "neutral", () => void setReport(r, "DISMISSED")));
+          li.append(actions);
+        }
+        return li;
+      }),
+    );
+  }
+
+  // ---------- Toko ----------
+  async function toggleSuspend(u: AdminUser) {
+    if (u.isSuspended) {
+      if (!confirm(`Pulihkan ${u.displayName}? Halaman toko langsung bisa dibuka lagi.`)) return;
+      if (!(await send(`/admin/users/${u.id}/suspend`, { isSuspended: false }))) return;
+      applySuspension(u.id, false, null);
+      toast(`${u.displayName} aktif kembali.`);
+    } else {
+      const reason = await askDecision({
+        title: `Nonaktifkan ${u.displayName}?`,
+        body: "Halaman toko langsung tertutup untuk pembeli, checkout dan pencairan dana ditahan.",
+        label: "Alasan penonaktifan",
+        confirm: "Nonaktifkan toko",
+        required: true,
+      });
+      if (reason === null) return;
+      if (!(await send(`/admin/users/${u.id}/suspend`, { isSuspended: true, suspendedReason: reason }))) return;
+      applySuspension(u.id, true, reason);
+      toast(`${u.displayName} dinonaktifkan.`);
+    }
+    renderAll();
+    // Fokus kembali ke tombol aksi toko yang sama setelah tabel dirender ulang.
+    [...document.querySelectorAll<HTMLButtonElement>("#panel-users button")]
+      .find((b) => b.getAttribute("aria-label")?.endsWith(u.displayName))
+      ?.focus();
+  }
+
+  const cell = (label: string, ...children: (string | Node)[]) => {
+    const td = el("td", "px-4 py-3 align-top max-md:px-0 max-md:py-1 max-md:before:block max-md:before:text-xs max-md:before:text-slate-400 max-md:before:content-[attr(data-label)]");
+    td.dataset.label = label;
+    td.append(...children);
+    return td;
+  };
+
+  function renderUsers() {
+    $("[data-list]", $("#panel-users")).replaceChildren(
+      ...data.users.map((u) => {
+        const tr = el("tr", "max-md:grid max-md:grid-cols-2 max-md:gap-x-4 max-md:gap-y-2 max-md:p-4");
+        const store = el("div", "min-w-0");
+        store.append(storeLink(u.username, u.displayName), el("span", "block text-xs text-slate-400", `Daftar ${formatDateTime(u.createdAt)}`));
+        const status = el("div");
+        status.append(
+          u.isSuspended
+            ? badge("Nonaktif", "border-rose-400/30 bg-rose-400/10 text-rose-200")
+            : badge("Aktif", "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"),
+        );
+        if (u.role === "ADMIN") status.append(" ", badge("Admin", "border-indigo-300/30 bg-indigo-400/10 text-indigo-200"));
+        if (u.suspendedReason) status.append(el("span", "mt-1 block text-xs text-rose-200 break-words", u.suspendedReason));
+        const email = el("div", "min-w-0");
+        email.append(el("span", "block break-all text-slate-200", u.email), el("span", `block text-xs ${u.emailVerified ? "text-emerald-200" : "text-amber-200"}`, u.emailVerified ? "Email terverifikasi" : "Email belum diverifikasi"));
+        const activity = el("span", "text-slate-300", `${u._count.items} item · ${u._count.orders} pesanan · ${u._count.reports} laporan`);
+        const action = u.role === "ADMIN" ? el("span", "text-xs text-slate-400", "-") : actionButton(u.isSuspended ? "Pulihkan" : "Nonaktifkan", u.isSuspended ? "neutral" : "danger", () => void toggleSuspend(u));
+        if (action instanceof HTMLButtonElement) action.setAttribute("aria-label", `${u.isSuspended ? "Pulihkan" : "Nonaktifkan"} ${u.displayName}`);
+        tr.append(cell("Toko", store), cell("Email", email), cell("Aktivitas", activity), cell("Status", status), cell("Aksi", action));
+        return tr;
+      }),
+    );
+  }
+
+  // ---------- Pencairan dana ----------
+  async function decidePayout(p: PendingPayout, status: "APPROVED" | "REJECTED") {
+    const approve = status === "APPROVED";
+    const adminNote = await askDecision({
+      title: approve ? `Setujui ${formatRupiah(p.amount)}?` : `Tolak ${formatRupiah(p.amount)}?`,
+      body: approve
+        ? `Pastikan dana sudah ditransfer ke ${p.bankName} ${p.accountNumber} a.n. ${p.accountHolder} sebelum menyetujui.`
+        : "Saldo kembali tersedia untuk penjual. Catatan ini ditampilkan di riwayat pencairan penjual.",
+      label: approve ? "Nomor referensi transfer" : "Alasan penolakan",
+      confirm: approve ? "Setujui Transfer" : "Tolak pengajuan",
+      required: !approve,
+    });
+    if (adminNote === null) return;
+    if (!(await send(`/admin/payouts/${p.id}`, { status, adminNote }))) return;
+    data.payouts = data.payouts.filter((x) => x.id !== p.id);
+    renderAll();
+    toast(approve ? "Pencairan disetujui." : "Pencairan ditolak.");
+  }
+
+  function renderPayouts() {
+    const panel = $<HTMLElement>("#panel-payouts");
+    $<HTMLElement>("[data-empty]", panel).hidden = data.payouts.length > 0;
+    $("[data-list]", panel).replaceChildren(
+      ...data.payouts.map((p) => {
+        const li = el("li", "glass-card rounded-2xl p-4");
+        const head = el("div", "flex flex-wrap items-start justify-between gap-2");
+        const who = el("div", "min-w-0");
+        who.append(storeLink(p.seller.username, p.seller.displayName), el("span", "block text-xs text-slate-400 break-all", p.seller.email));
+        head.append(who, el("p", "font-display text-xl font-bold tabular-nums text-white", formatRupiah(p.amount)));
+        const bank = el("dl", "mt-3 grid gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm sm:grid-cols-3");
+        for (const [k, v] of [["Bank", p.bankName], ["Nomor", p.accountNumber], ["Atas nama", p.accountHolder]] as const) {
+          const row = el("div", "min-w-0");
+          row.append(el("dt", "text-xs text-slate-400", k), el("dd", "font-medium text-white break-all", v));
+          bank.append(row);
+        }
+        li.append(head, bank, el("p", "mt-2 text-xs text-slate-400", `Diajukan ${formatDateTime(p.createdAt)}`));
+        // availableBalance sudah dikurangi pengajuan ini; minus berarti saldo tidak lagi menutupinya.
+        const covered = p.sellerBalance.availableBalance >= 0;
+        li.append(
+          el(
+            "p",
+            `mt-1 text-xs ${covered ? "text-slate-400" : "font-semibold text-rose-200"}`,
+            covered
+              ? `Omzet lunas ${formatRupiah(p.sellerBalance.totalRevenue)}, sisa saldo setelah semua pengajuan ${formatRupiah(p.sellerBalance.availableBalance)}.`
+              : `Saldo penjual tidak lagi menutupi pengajuan ini (kurang ${formatRupiah(-p.sellerBalance.availableBalance)}). Periksa sebelum transfer.`,
+          ),
+        );
+        if (p.seller.isSuspended) li.append(el("p", "mt-1 text-xs font-semibold text-rose-200", "Toko ini sedang dinonaktifkan."));
+        const actions = el("div", "mt-3 flex flex-wrap gap-2 border-t border-white/10 pt-3");
+        actions.append(
+          actionButton("Setujui Transfer", "primary", () => void decidePayout(p, "APPROVED")),
+          actionButton("Tolak", "danger", () => void decidePayout(p, "REJECTED")),
+        );
+        li.append(actions);
+        return li;
+      }),
+    );
+  }
+
+  function renderCounts() {
+    const counts: Record<string, number> = {
+      reports: data.reports.filter((r) => r.status === "OPEN").length,
+      users: data.users.length,
+      payouts: data.payouts.length,
+    };
+    document.querySelectorAll<HTMLElement>("[data-count]").forEach((badgeEl) => {
+      const n = counts[badgeEl.dataset.count!] ?? 0;
+      badgeEl.textContent = String(n);
+      badgeEl.hidden = n === 0;
+    });
+  }
+
+  async function load() {
+    if (root.querySelector<HTMLElement>('[data-state="ready"]')!.hidden) showState(root, "loading");
+    try {
+      const res = await api("/admin/overview");
+      if (redirectIfUnauthorized(res)) return;
+      if (res.status === 403) return location.assign("/dashboard");
+      if (!res.ok) throw new Error(await errorMessage(res, "Data admin tidak bisa dimuat."));
+      data = (await res.json()) as AdminOverview;
+      renderAll();
+      showState(root, "ready");
+    } catch (err) {
+      $("#error-text").textContent = err instanceof TypeError ? "Tidak bisa terhubung ke server." : (err as Error).message;
+      showState(root, "error");
+    }
+  }
+
+  // ---------- Tab (pola WAI-ARIA: panah kiri/kanan, Home, End) ----------
+  const tabEls = [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+  function selectTab(tab: HTMLButtonElement, focus = true) {
+    for (const t of tabEls) {
+      const selected = t === tab;
+      t.setAttribute("aria-selected", String(selected));
+      t.tabIndex = selected ? 0 : -1;
+      document.getElementById(t.getAttribute("aria-controls")!)!.hidden = !selected;
+    }
+    if (focus) tab.focus();
+    history.replaceState(null, "", `#${tab.id.replace("tab-", "")}`);
+  }
+  tabEls.forEach((tab, i) => {
+    tab.addEventListener("click", () => selectTab(tab));
+    tab.addEventListener("keydown", (e) => {
+      const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabEls.length - 1 }[e.key];
+      if (next === undefined) return;
+      e.preventDefault();
+      selectTab(tabEls[(next + tabEls.length) % tabEls.length]!);
+    });
+  });
+  const fromHash = tabEls.find((t) => t.id === `tab-${location.hash.slice(1)}`);
+  if (fromHash) selectTab(fromHash, false);
+
+  $("#retry").addEventListener("click", () => void load());
+  void load();
+</script>

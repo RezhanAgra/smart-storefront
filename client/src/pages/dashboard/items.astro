@@ -87,6 +87,10 @@ const radioClass =
             <input type="hidden" name="imageUrl" id="f-image-url" />
             <button type="button" id="image-remove" class="btn-ghost mt-2 text-sm" hidden>Hapus gambar</button>
           </div>
+          <label class="mt-4 flex min-h-11 items-center gap-3 rounded-2xl border border-white/10 px-3 text-sm text-slate-200">
+            <input type="checkbox" id="f-physical" class="size-4 shrink-0 accent-indigo-400" />
+            Produk fisik (membutuhkan alamat pengiriman)
+          </label>
           <div class="mt-4 rounded-2xl border border-white/10 p-3">
             <label class="flex min-h-11 items-center gap-3 text-sm text-slate-200">
               <input type="checkbox" id="f-digital" class="size-4 shrink-0 accent-indigo-400" />
@@ -215,6 +219,10 @@ const radioClass =
                   </div>
                   <input type="hidden" name="imageUrl" id="e-image-url" />
                 </div>
+          <label class="mt-4 flex min-h-11 items-center gap-3 rounded-2xl border border-white/10 px-3 text-sm text-slate-200">
+            <input type="checkbox" id="e-physical" class="size-4 shrink-0 accent-indigo-400" />
+            Produk fisik (membutuhkan alamat pengiriman)
+          </label>
           <div class="mt-4 rounded-2xl border border-white/10 p-3">
             <label class="flex min-h-11 items-center gap-3 text-sm text-slate-200">
               <input type="checkbox" id="e-digital" class="size-4 shrink-0 accent-indigo-400" />
@@ -304,7 +312,9 @@ const radioClass =
             ? "Tautan"
             : item.isDigital
               ? `Produk digital · ${item.digitalFileName ?? "file belum diunggah"}`
-              : "Produk";
+              : item.isPhysical
+                ? "Produk fisik · dikirim ke alamat pembeli"
+                : "Produk";
         field("title").textContent = item.title;
 
         const meta = field("meta");
@@ -438,9 +448,10 @@ const radioClass =
     }
   }
 
-  // --- Produk digital (dipakai form tambah dan modal edit)
+  // --- Jenis produk: fisik atau digital (saling meniadakan). Dipakai form tambah dan modal edit.
   function digitalControl(prefix: "f" | "e") {
     const box = $<HTMLInputElement>(`#${prefix}-digital`);
+    const physical = $<HTMLInputElement>(`#${prefix}-physical`);
     const fields = $<HTMLElement>(`#${prefix}-digital-fields`);
     const nameEl = $<HTMLElement>(`#${prefix}-digital-name`);
     const labelEl = $<HTMLElement>(`#${prefix}-digital-label`);
@@ -454,7 +465,14 @@ const radioClass =
       nameEl.textContent = name ? `File: ${name}` : "Belum ada file.";
       labelEl.textContent = uploading ? "Mengunggah..." : name ? "Ganti file" : "Unggah file";
     };
-    box.addEventListener("change", render);
+    box.addEventListener("change", () => {
+      if (box.checked) physical.checked = false;
+      render();
+    });
+    physical.addEventListener("change", () => {
+      if (physical.checked) box.checked = false;
+      render();
+    });
     fileInput.addEventListener("change", async () => {
       const file = fileInput.files?.[0];
       if (!file) return;
@@ -478,15 +496,22 @@ const radioClass =
       },
       /** Pesan error jika produk digital belum punya file, selain itu null. */
       problem: () => (uploading ? "Tunggu file selesai diunggah." : box.checked && !key ? "Unggah file produk digital dulu." : null),
-      value: () => ({ isDigital: box.checked, digitalFileKey: box.checked ? key : null, digitalFileName: box.checked ? name : null }),
+      value: () => ({
+        isDigital: box.checked,
+        isPhysical: physical.checked,
+        digitalFileKey: box.checked ? key : null,
+        digitalFileName: box.checked ? name : null,
+      }),
       set(item: DashboardItem) {
         box.checked = Boolean(item.isDigital);
+        physical.checked = Boolean(item.isPhysical);
         key = item.digitalFileKey;
         name = item.digitalFileName;
         render();
       },
       reset() {
         box.checked = false;
+        physical.checked = false;
         key = name = null;
         render();
       },
@@ -580,7 +605,7 @@ const radioClass =
     event.preventDefault();
     if (!editing) return;
     if (!editForm.checkValidity()) {
-      const invalid = editForm.querySelector<HTMLInputElement>(":invalid");
+      const invalid = editForm.querySelector<HTMLInputElement>("input:invalid, textarea:invalid, select:invalid");
       const label = invalid ? editForm.querySelector(`label[for="${invalid.id}"]`)?.textContent?.trim() : null;
       showEditError(label ? `Periksa "${label}". ${invalid?.validationMessage ?? ""}` : "Periksa isian form.");
       invalid?.focus();
@@ -710,7 +735,7 @@ const radioClass =
     if (uploading) return;
 
     if (!form.checkValidity()) {
-      const invalid = form.querySelector<HTMLInputElement>(":invalid");
+      const invalid = form.querySelector<HTMLInputElement>("input:invalid, textarea:invalid, select:invalid");
       const label = invalid ? form.querySelector(`label[for="${invalid.id}"]`)?.textContent?.trim() : null;
       showStatus(label ? `Periksa kolom "${label}". ${invalid?.validationMessage ?? ""}` : "Periksa isian form.", "error");
       invalid?.focus();

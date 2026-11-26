@@ -9,6 +9,8 @@ import {
   register,
   resetPassword,
   updateProfile,
+  verifyEmail,
+  resendVerification,
 } from "../controllers/auth.controller.js";
 import { requireAuth } from "../middlewares/auth.middleware.js";
 
@@ -20,6 +22,8 @@ router.post("/logout", logout);
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password", resetPassword);
 router.get("/me", requireAuth, me);
+router.get("/verify-email", verifyEmail);
+router.post("/resend-verification", requireAuth, resendVerification);
 router.put("/profile", requireAuth, updateProfile);
 router.put("/password", requireAuth, changePassword);
 router.delete("/account", requireAuth, deleteAccount);

@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../lib/env.js";
+import { prisma } from "../lib/prisma.js";
 
 export const TOKEN_COOKIE = "token";
 export const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 hari
@@ -40,4 +41,17 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   } catch {
     res.status(401).json({ message: "Sesi tidak valid atau sudah kedaluwarsa." });
   }
+}
+
+/**
+ * Dipasang setelah requireAuth. Role dibaca dari database pada setiap request (bukan dari JWT),
+ * supaya pencabutan akses admin berlaku seketika.
+ */
+export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const user = await prisma.user.findUnique({ where: { id: req.userId }, select: { role: true } });
+  if (user?.role !== "ADMIN") {
+    res.status(403).json({ message: "Halaman ini khusus admin." });
+    return;
+  }
+  next();
 }

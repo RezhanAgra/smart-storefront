@@ -144,6 +144,28 @@ const paymentLabel = (type: string | null) => (type ? type.replace(/_/g, " ").to
             </div>
           </section>
 
+          {order.needsShipping && order.status === "PAID" && (
+            <section aria-labelledby="shipping-heading" class="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <h2 id="shipping-heading" class="font-semibold text-white">Pengiriman</h2>
+              {order.trackingNumber ? (
+                <>
+                  <p class="mt-1 text-sm text-slate-300">
+                    Dikirim {order.shippedAt ? formatDate(order.shippedAt) : ""}. Nomor resi:
+                  </p>
+                  <div class="mt-2 flex items-center gap-2">
+                    <p id="tracking-number" class="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 font-mono text-white break-all">
+                      {order.trackingNumber}
+                    </p>
+                    <button type="button" id="copy-tracking" class="btn-ghost shrink-0 px-4 text-sm print:hidden">Salin</button>
+                  </div>
+                  <p class="mt-2 text-xs text-slate-400">Lacak di situs kurir yang tertera pada nomor resi.</p>
+                </>
+              ) : (
+                <p class="mt-1 text-sm text-slate-300">Penjual sedang menyiapkan pesananmu. Nomor resi muncul di sini setelah barang dikirim.</p>
+              )}
+            </section>
+          )}
+
           {order.digital && (
             <section aria-labelledby="download-heading" class="mt-6 rounded-2xl border border-cyan-300/20 bg-cyan-400/[0.06] p-4 print:hidden">
               <h2 id="download-heading" class="font-semibold text-white">File produk digital</h2>
@@ -192,6 +214,18 @@ const paymentLabel = (type: string | null) => (type ? type.replace(/_/g, " ").to
   import { API_URL } from "../../lib/api";
 
   document.querySelector("#print")?.addEventListener("click", () => window.print());
+
+  document.querySelector<HTMLButtonElement>("#copy-tracking")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    const text = document.querySelector("#tracking-number")?.textContent?.trim() ?? "";
+    try {
+      await navigator.clipboard.writeText(text);
+      button.textContent = "Tersalin";
+    } catch {
+      button.textContent = "Gagal menyalin";
+    }
+    setTimeout(() => (button.textContent = "Salin"), 2000);
+  });
 
   const refresh = document.querySelector<HTMLButtonElement>("#refresh");
   const statusText = document.querySelector<HTMLElement>("#refresh-status");

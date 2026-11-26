@@ -73,3 +73,35 @@ export function sendPasswordResetEmail(to: string, token: string): Promise<void>
     `Tidak merasa meminta? Abaikan email ini. Password lamamu tetap berlaku.`,
   ]);
 }
+
+/**
+ * Email verifikasi pendaftaran. Tanpa SMTP (development), tautan dicetak di console server
+ * supaya alur verifikasi tetap bisa diuji.
+ */
+export async function sendVerificationEmail(to: string, displayName: string, token: string): Promise<void> {
+  const link = `${env.clientUrl}/verify-email?token=${token}`;
+  if (!transport) {
+    console.log(
+      ["", "=".repeat(72), `  VERIFIKASI EMAIL (SMTP belum dikonfigurasi) untuk ${to}`, `  ${link}`, "=".repeat(72), ""].join("\n"),
+    );
+    return;
+  }
+  await send(to, "Konfirmasi email akun smart-storefront", [
+    `Halo ${displayName},`,
+    `Konfirmasi email ini agar tokomu bisa mencairkan dana penjualan: ${link}`,
+    `Tautan berlaku 24 jam. Tidak merasa mendaftar? Abaikan email ini.`,
+  ]);
+}
+
+/** Kabari pembeli saat penjual mengisi nomor resi. Gagal kirim hanya dicatat di log. */
+export function sendTrackingEmail(
+  order: { orderCode: string; itemTitle: string; buyerName: string; buyerEmail: string; trackingNumber: string },
+  sellerName: string,
+): void {
+  sendQuietly(order.buyerEmail, `Pesananmu sudah dikirim: ${order.itemTitle}`, [
+    `Halo ${order.buyerName},`,
+    `${sellerName} sudah mengirim pesananmu (${order.itemTitle}).`,
+    `Nomor resi: ${order.trackingNumber}`,
+    `Struk dan status pesanan: ${env.clientUrl}/order/${order.orderCode}`,
+  ]);
+}

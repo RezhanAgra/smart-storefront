@@ -1,6 +1,9 @@
 import type { Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import { digitalFileExists, digitalFilePath, MAX_DOWNLOADS } from "../lib/digital.js";
+import { isObjectId, ValidationError } from "../lib/validation.js";
+import { firstIssue, trackingSchema } from "../lib/schemas.js";
+import { sendTrackingEmail } from "../lib/mailer.js";
 
 const STATUSES = new Set(["PENDING", "PAID", "FAILED"]);
 
@@ -25,6 +28,10 @@ export async function listOrders(req: Request, res: Response): Promise<void> {
       buyerName: true,
       buyerEmail: true,
       note: true,
+      shippingAddress: true,
+      shippingPhone: true,
+      trackingNumber: true,
+      shippedAt: true,
       status: true,
       paymentType: true,
       paidAt: true,
@@ -61,6 +68,9 @@ export async function getOrderStatus(req: Request, res: Response): Promise<void>
           paymentType: true,
           paidAt: true,
           createdAt: true,
+          shippingAddress: true,
+          trackingNumber: true,
+          shippedAt: true,
           user: { select: { displayName: true, username: true } },
         },
       })
@@ -71,9 +81,11 @@ export async function getOrderStatus(req: Request, res: Response): Promise<void>
     return;
   }
 
-  const { user, grossAmount, digitalFileName, downloadCount, subtotal, discountAmount, ...rest } = order;
+  // Alamat pengiriman tidak ikut ke struk publik; cukup penanda bahwa ini barang yang dikirim.
+  const { user, grossAmount, digitalFileName, downloadCount, subtotal, discountAmount, shippingAddress, ...rest } = order;
   res.json({
     ...rest,
+    needsShipping: Boolean(shippingAddress),
     subtotal: subtotal ?? order.unitPrice * order.quantity,
     discountAmount: discountAmount ?? 0,
     totalAmount: grossAmount,
@@ -117,4 +129,48 @@ export async function downloadDigital(req: Request, res: Response): Promise<void
 
   await prisma.order.update({ where: { id: order.id }, data: { downloadCount: { increment: 1 } } });
   res.download(digitalFilePath(order.digitalFileKey), order.digitalFileName ?? order.digitalFileKey);
+}
+
+/**
+ * PATCH /api/orders/:id/tracking: { trackingNumber } (null untuk menghapus). Hanya penjual pemilik pesanan,
+ * hanya untuk pesanan lunas yang punya alamat pengiriman. Pembeli dikabari lewat email saat resi diisi.
+ */
+export async function updateTracking(req: Request, res: Response): Promise<void> {
+  const parsed = trackingSchema.safeParse(req.body);
+  if (!parsed.success) throw new ValidationError(firstIssue(parsed.error));
+  const { id } = req.params;
+
+  const order = isObjectId(id)
+    ? await prisma.order.findFirst({
+        where: { id, userId: req.userId },
+        select: { id: true, status: true, shippingAddress: true, trackingNumber: true },
+      })
+    : null;
+  if (!order) {
+    res.status(404).json({ message: "Pesanan tidak ditemukan." });
+    return;
+  }
+  if (!order.shippingAddress) throw new ValidationError("Pesanan ini bukan barang fisik, jadi tidak perlu resi.");
+  if (order.status !== "PAID") throw new ValidationError("Resi hanya bisa diisi untuk pesanan yang sudah lunas.");
+
+  const trackingNumber = parsed.data.trackingNumber;
+  const updated = await prisma.order.update({
+    where: { id: order.id },
+    data: { trackingNumber, shippedAt: trackingNumber ? new Date() : null },
+    select: {
+      id: true,
+      orderCode: true,
+      itemTitle: true,
+      buyerName: true,
+      buyerEmail: true,
+      trackingNumber: true,
+      shippedAt: true,
+      user: { select: { displayName: true } },
+    },
+  });
+
+  if (updated.trackingNumber && updated.trackingNumber !== order.trackingNumber) {
+    sendTrackingEmail({ ...updated, trackingNumber: updated.trackingNumber }, updated.user.displayName);
+  }
+  res.json({ order: { id: updated.id, trackingNumber: updated.trackingNumber, shippedAt: updated.shippedAt } });
 }
