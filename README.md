@@ -262,10 +262,9 @@ Endpoint ini memverifikasi `signature_key` dengan `MIDTRANS_SERVER_KEY` dan tida
 git pull && docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm migrate   # jika schema berubah
 
-# Backup database dan file upload
-docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T mongo mongodump --archive --gzip > backup-$(date +%F).gz
-docker run --rm -v smart-storefront-prod_uploads_prod_data:/u -v smart-storefront-prod_private_uploads_prod_data:/p -v "$PWD":/b alpine tar czf /b/files-$(date +%F).tgz /u /p
 ```
+
+Backup harian otomatis ada di bagian [Operasional Produksi, Legal & Checklist Go-Live](#operasional-produksi-legal--checklist-go-live).
 
 Volume persisten: `mongo_prod_data`, `uploads_prod_data` (gambar), `private_uploads_prod_data` (file produk digital), `caddy_data` (sertifikat SSL).
 
@@ -307,9 +306,93 @@ Dengan `SMTP_HOST` dan `MAIL_FROM` terisi (`GET /api/health` menampilkan `"email
 
 Email pesanan dikirim di latar belakang. Jika gagal, pesanan tetap lunas dan error hanya dicatat di log server. Pakai penyedia SMTP transaksional (misalnya Brevo, Mailgun, Amazon SES), lalu atur SPF dan DKIM domain pengirim agar email tidak masuk spam.
 
-## Sebelum rilis
+## Operasional Produksi, Legal & Checklist Go-Live
 
-- **Pencairan dana ke penjual belum ada.** Semua pembayaran masuk ke satu akun Midtrans milik pengelola situs. Belum ada saldo penjual, data rekening, atau penarikan dana.
-- Isi `SITE_OPERATOR_NAME` dan `SITE_CONTACT_EMAIL`, lalu minta orang yang paham hukum meninjau teks halaman legal, terutama batas waktu di Kebijakan Refund.
+### Error tracking (Sentry)
+
+1. Buat project **Node.js** di [sentry.io](https://sentry.io), salin DSN-nya.
+2. Isi di `.env.prod`: `SENTRY_DSN="https://...@...ingest.sentry.io/..."` dan `SENTRY_ENVIRONMENT=production`, lalu `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d server`.
+3. Di Sentry, buat **Alert** untuk issue baru agar kamu dikabari lewat email atau Slack.
+
+Yang dikirim ke Sentry (`server/src/lib/sentry.ts`):
+
+| Kejadian | Level | Tag `area` |
+| --- | --- | --- |
+| Error 5xx yang tidak tertangani di route mana pun | error | - |
+| Webhook Midtrans dengan signature tidak valid (notifikasi palsu atau `MIDTRANS_SERVER_KEY` salah) | warning | `midtrans-webhook` |
+| Pembayaran sudah terjadi di Midtrans tetapi status pesanan gagal disimpan | error | `midtrans-webhook` |
+| Midtrans Snap menolak membuat transaksi | error | `midtrans-snap` |
+| Email gagal terkirim (verifikasi, reset password, struk, notifikasi, resi) | error | `email` + `mail_kind` |
+
+Error validasi (4xx) tidak dikirim. Sentry tidak menerima cookie, body request, header `Authorization`/`x-internal-key`, query string (token verifikasi/reset), variabel lokal, maupun parameter query database. Email hanya dikirim domainnya. Tanpa `SENTRY_DSN`, Sentry tidak aktif sama sekali.
+
+### Backup harian ke luar VPS
+
+`scripts/backup-mongo.sh` membuat `backup_YYYY-MM-DD_HHMM.gz` (mongodump terkompresi) dan `files_YYYY-MM-DD_HHMM.tar.gz` (volume gambar dan file produk digital; tanpa ini, restore menghasilkan toko dengan gambar rusak dan file unduhan hilang). Arsip dicek dengan `gzip -t`, backup lokal yang lebih tua dari 7 hari dihapus, lalu keduanya disalin ke luar VPS dengan rclone. Jika gagal, skrip mengirim pesan ke Discord/Telegram berisi langkah yang gagal.
+
+1. Pasang rclone di VPS: `sudo apt install rclone` (atau versi terbaru: https://rclone.org/install/), lalu `rclone config` untuk membuat remote Cloudflare R2, AWS S3, atau Google Drive.
+2. Konfigurasi skrip:
+   ```bash
+   cp scripts/backup.env.example scripts/backup.env
+   nano scripts/backup.env   # RCLONE_REMOTE, DISCORD_WEBHOOK_URL / TELEGRAM_*, HEARTBEAT_URL
+   sudo mkdir -p /var/backups/smart-storefront && sudo chown "$USER" /var/backups/smart-storefront
+   ```
+3. Jalankan sekali secara manual dan pastikan berhasil:
+   ```bash
+   ./scripts/backup-mongo.sh
+   ./scripts/test-restore-mongo.sh   # memulihkan backup terbaru ke MongoDB sementara, lalu menghapusnya
+   ```
+4. Jadwalkan dengan `crontab -e` (user yang bisa menjalankan `docker`). Cron memakai zona waktu server; atur dulu dengan `sudo timedatectl set-timezone Asia/Jakarta`.
+   ```cron
+   # Backup setiap hari pukul 02:00
+   0 2 * * * cd /opt/smart-storefront && ./scripts/backup-mongo.sh >> /var/log/smart-storefront-backup.log 2>&1
+   # Uji restore setiap Minggu pukul 03:30
+   30 3 * * 0 cd /opt/smart-storefront && ./scripts/test-restore-mongo.sh >> /var/log/smart-storefront-backup.log 2>&1
+   ```
+   Ganti `/opt/smart-storefront` dengan folder proyek di VPS.
+5. Isi `HEARTBEAT_URL` dengan URL check dari [healthchecks.io](https://healthchecks.io) (gratis) berjadwal harian. Notifikasi Discord/Telegram hanya terkirim jika skrip berjalan lalu gagal; heartbeat juga memberi tahu jika cron sama sekali tidak berjalan.
+
+`test-restore-mongo.sh` tidak menyentuh database produksi: arsip dipulihkan ke container `mongo:7` sementara sebagai database `smart_storefront_restore_test`, jumlah koleksi dan dokumen dicetak, arsip file diperiksa bisa dibaca, lalu database dan container dihapus.
+
+**Pemulihan sungguhan** (menimpa data produksi, lakukan hanya saat bencana, setelah membuat backup kondisi saat ini):
+
+```bash
+C="docker compose -f docker-compose.prod.yml --env-file .env.prod"
+$C exec -T mongo mongorestore --archive --gzip --drop < /var/backups/smart-storefront/backup_YYYY-MM-DD_HHMM.gz
+docker run --rm -i --volumes-from "$($C ps -q server)" alpine tar xzf - -C /app < /var/backups/smart-storefront/files_YYYY-MM-DD_HHMM.tar.gz
+```
+
+### Uptime monitoring
+
+`GET /api/health` mem-ping database dan mengembalikan 200 `{"status":"ok"}`, atau 503 jika database tidak terjangkau.
+
+- **UptimeRobot** (gratis): *Add New Monitor* → tipe **Keyword**, URL `https://domainkamu.com/api/health`, keyword `"status":"ok"`, interval **5 menit**. Tambahkan monitor kedua tipe **HTTP(s)** untuk `https://domainkamu.com/` agar container client ikut terpantau. Di *Alert Contacts*, tambahkan email dan Telegram.
+- **Better Stack Uptime** (gratis): *Create monitor* → *URL becomes unavailable* atau *URL doesn't contain keyword* (`"status":"ok"`), check frequency 5 menit, on-call via email/Telegram.
+
+Endpoint health ikut rate limit 100 request / 15 menit per IP; satu cek per 5 menit jauh di bawah batas itu.
+
+### Checklist go-live
+
+**Keamanan dan operasional**
+- [ ] `JWT_SECRET` dan `INTERNAL_API_KEY` di `.env.prod` adalah string acak (`openssl rand -hex 32`), bukan nilai contoh.
+- [ ] `ADMIN_EMAIL` dan `ADMIN_PASSWORD` (minimal 12 karakter) diisi sebelum `run --rm migrate npm run seed`. **Jika seed pernah dijalankan di VPS sebelum service `migrate` diberi `NODE_ENV=production`**, akun `admin@smartstore.id` / `admin1234` mungkin sudah terbuat: hapus akun itu atau ganti passwordnya.
+- [ ] SMTP terisi dan email verifikasi terkirim. Tanpa SMTP, penjual tidak bisa memverifikasi email dan tidak bisa mencairkan dana.
+- [ ] `SENTRY_DSN` terisi dan alert Sentry aktif.
+- [ ] Backup harian berjalan, `RCLONE_REMOTE` terisi, uji restore pernah berhasil, dan heartbeat aktif.
+- [ ] Monitor uptime aktif untuk `/api/health` dan halaman utama.
+
+**Legal**
+- [ ] `SITE_OPERATOR_NAME` dan `SITE_CONTACT_EMAIL` terisi; halaman `/syarat-ketentuan`, `/kebijakan-privasi`, dan `/kebijakan-refund` tidak lagi menampilkan penanda `[ISI ...]`.
+- [ ] Teks Syarat & Ketentuan, Kebijakan Privasi, dan Kebijakan Refund ditinjau orang yang paham hukum Indonesia, terutama batas waktu refund, mekanisme pencairan dana, dan batas tanggung jawab.
+- [ ] Cek kewajiban pendaftaran Penyelenggara Sistem Elektronik (PSE) Lingkup Privat untuk layanan ini.
+
+**Midtrans production**
+- [ ] Dokumen usaha diunggah dan diverifikasi di dashboard Midtrans production sesuai yang diminta untuk jenis usahamu.
+- [ ] **Konfirmasi tertulis dari tim Midtrans** bahwa model bisnis ini diizinkan di akunmu: satu akun merchant menerima pembayaran untuk banyak penjual, lalu dana diteruskan ke penjual secara manual (pencairan dana / payout). Model agregator atau marketplace bisa memerlukan persetujuan atau produk Midtrans yang berbeda. Jangan aktifkan production sebelum ini jelas.
+- [ ] Key production terpasang, `MIDTRANS_IS_PRODUCTION=true`, dan Notification URL production diarahkan ke `https://domainkamu.com/api/payments/midtrans/notification`.
+- [ ] Satu transaksi nyata bernominal kecil berhasil sampai status `PAID`, termasuk uji refund lewat dashboard Midtrans.
+
+**Batasan yang masih ada**
 - Sesi login lama (JWT, 7 hari) tetap berlaku setelah ganti atau reset password, karena token tidak dicek ke database.
-- Tidak ada UI admin: badge verifikasi diatur lewat database, dan toko yang melanggar dinonaktifkan manual.
+- Refund lewat Midtrans tidak otomatis mengurangi saldo penjual; periksa sebelum menyetujui pencairan.
+- Pencairan dana ditransfer manual oleh admin.

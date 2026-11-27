@@ -12,6 +12,7 @@ import {
   type MidtransStatus,
 } from "../lib/midtrans.js";
 import { applyOrderStatus } from "../lib/orders.js";
+import { reportError, reportMessage } from "../lib/sentry.js";
 import { quoteCoupon } from "../lib/coupons.js";
 import { checkoutSchema, firstIssue } from "../lib/schemas.js";
 
@@ -168,11 +169,32 @@ export async function midtransNotification(req: Request, res: Response): Promise
     return;
   }
   if (!env.midtrans.serverKey || !isValidSignature(n as MidtransStatus)) {
+    // Bisa berarti notifikasi palsu, atau MIDTRANS_SERVER_KEY tidak cocok dengan akun Midtrans yang mengirim.
+    reportMessage("Notifikasi Midtrans dengan signature tidak valid", "warning", {
+      area: "midtrans-webhook",
+      extra: {
+        orderCode: n.order_id,
+        statusCode: n.status_code,
+        transactionStatus: n.transaction_status,
+        serverKeyConfigured: Boolean(env.midtrans.serverKey),
+      },
+    });
     res.status(403).json({ message: "Signature tidak valid." });
     return;
   }
 
-  const order = await applyOrderStatus(n.order_id, mapStatus(n as MidtransStatus), n.payment_type);
-  // 200 juga untuk order yang tidak dikenal, supaya Midtrans tidak terus mengirim ulang.
-  res.json({ received: true, status: order?.status ?? null });
+  try {
+    const order = await applyOrderStatus(n.order_id, mapStatus(n as MidtransStatus), n.payment_type);
+    // 200 juga untuk order yang tidak dikenal, supaya Midtrans tidak terus mengirim ulang.
+    res.json({ received: true, status: order?.status ?? null });
+  } catch (err) {
+    // Pembayaran sudah terjadi di Midtrans tetapi status pesanan gagal disimpan: wajib ditindaklanjuti.
+    // Jawaban 500 membuat Midtrans mengirim ulang notifikasi ini.
+    reportError(err, {
+      area: "midtrans-webhook",
+      tags: { transaction_status: n.transaction_status },
+      extra: { orderCode: n.order_id, statusCode: n.status_code, paymentType: n.payment_type },
+    });
+    res.status(500).json({ message: "Gagal memproses notifikasi." });
+  }
 }

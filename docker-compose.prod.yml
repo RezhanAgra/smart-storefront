@@ -89,6 +89,9 @@ services:
       target: builder
     profiles: [tools]
     env_file: .env.prod
+    environment:
+      # Wajib: tanpa ini seed menganggap development dan membuat admin contoh admin@smartstore.id / admin1234.
+      NODE_ENV: production
     command: ["npx", "prisma", "db", "push", "--skip-generate"]
     networks: [smart_net]
     depends_on:

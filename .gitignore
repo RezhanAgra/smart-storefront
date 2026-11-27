@@ -6,3 +6,4 @@ dist/
 
 # Produksi
 .env.prod
+scripts/backup.env

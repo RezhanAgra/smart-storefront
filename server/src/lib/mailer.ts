@@ -1,5 +1,9 @@
 import nodemailer from "nodemailer";
 import { env, mailEnabled } from "./env.js";
+import { emailDomain, reportError } from "./sentry.js";
+
+/** Jenis email, dipakai sebagai tag di Sentry saat pengiriman gagal. */
+type MailKind = "order-paid-buyer" | "order-paid-seller" | "password-reset" | "verification" | "tracking";
 
 const transport = mailEnabled()
   ? nodemailer.createTransport({
@@ -16,17 +20,24 @@ const escape = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 /** Email teks biasa plus versi HTML sederhana dari paragraf yang sama. */
-async function send(to: string, subject: string, paragraphs: string[], replyTo?: string): Promise<void> {
+async function send(kind: MailKind, to: string, subject: string, paragraphs: string[], replyTo?: string): Promise<void> {
   if (!transport) return;
   const html = paragraphs
     .map((p) => `<p>${escape(p).replace(/(https?:\/\/\S+)/g, '<a href="$1">$1</a>')}</p>`)
     .join("");
-  await transport.sendMail({ from: env.smtp.from, to, replyTo, subject, text: paragraphs.join("\n\n"), html });
+  try {
+    await transport.sendMail({ from: env.smtp.from, to, replyTo, subject, text: paragraphs.join("\n\n"), html });
+  } catch (err) {
+    // Biasanya SMTP tidak terjangkau, login SMTP salah, atau alamat ditolak server email.
+    reportError(err, { area: "email", tags: { mail_kind: kind }, extra: { recipientDomain: emailDomain(to), smtpHost: env.smtp.host } });
+    throw err;
+  }
 }
 
 /** Kirim tanpa menggagalkan request: email yang gagal hanya dicatat di log. */
-function sendQuietly(to: string, subject: string, paragraphs: string[], replyTo?: string): void {
-  send(to, subject, paragraphs, replyTo).catch((err) => console.error(`Gagal mengirim email ke ${to}:`, err));
+function sendQuietly(kind: MailKind, to: string, subject: string, paragraphs: string[], replyTo?: string): void {
+  // Error sudah dicatat dan dilaporkan di send(); di sini cukup jangan sampai menggagalkan request.
+  send(kind, to, subject, paragraphs, replyTo).catch(() => undefined);
 }
 
 interface PaidOrder {
@@ -44,7 +55,7 @@ export function sendOrderPaidEmails(order: PaidOrder, seller: { email: string; d
   const receiptUrl = `${env.clientUrl}/order/${order.orderCode}`;
   const line = `${order.itemTitle} x ${order.quantity}, total ${rupiah.format(order.grossAmount)}`;
 
-  sendQuietly(order.buyerEmail, `Pembayaran lunas: ${order.itemTitle}`, [
+  sendQuietly("order-paid-buyer", order.buyerEmail, `Pembayaran lunas: ${order.itemTitle}`, [
     `Halo ${order.buyerName},`,
     `Pembayaranmu di ${seller.displayName} sudah kami terima.`,
     `${line}. Kode pesanan: ${order.orderCode}.`,
@@ -54,7 +65,7 @@ export function sendOrderPaidEmails(order: PaidOrder, seller: { email: string; d
     `Simpan email ini. Ada pertanyaan soal pesanan? Hubungi penjual lewat kontak di halaman tokonya.`,
   ]);
 
-  sendQuietly(seller.email, `Pesanan baru lunas: ${order.itemTitle}`, [
+  sendQuietly("order-paid-seller", seller.email, `Pesanan baru lunas: ${order.itemTitle}`, [
     `Ada pesanan baru yang sudah dibayar.`,
     `${line}.`,
     `Pembeli: ${order.buyerName} (${order.buyerEmail}).`,
@@ -71,7 +82,7 @@ export async function sendPasswordResetEmail(to: string, token: string): Promise
     console.log(["", "=".repeat(72), `  RESET PASSWORD (SMTP belum dikonfigurasi) untuk ${to}`, `  ${link}`, "=".repeat(72), ""].join("\n"));
     return;
   }
-  return send(to, "Atur ulang password smart-storefront", [
+  return send("password-reset", to, "Atur ulang password smart-storefront", [
     `Kami menerima permintaan untuk mengatur ulang password akunmu.`,
     `Buka tautan ini dalam 1 jam: ${link}`,
     `Tidak merasa meminta? Abaikan email ini. Password lamamu tetap berlaku.`,
@@ -90,7 +101,7 @@ export async function sendVerificationEmail(to: string, displayName: string, tok
     );
     return;
   }
-  await send(to, "Konfirmasi email akun smart-storefront", [
+  await send("verification", to, "Konfirmasi email akun smart-storefront", [
     `Halo ${displayName},`,
     `Konfirmasi email ini agar tokomu bisa mencairkan dana penjualan: ${link}`,
     `Tautan berlaku 24 jam. Tidak merasa mendaftar? Abaikan email ini.`,
@@ -102,7 +113,7 @@ export function sendTrackingEmail(
   order: { orderCode: string; itemTitle: string; buyerName: string; buyerEmail: string; trackingNumber: string },
   sellerName: string,
 ): void {
-  sendQuietly(order.buyerEmail, `Pesananmu sudah dikirim: ${order.itemTitle}`, [
+  sendQuietly("tracking", order.buyerEmail, `Pesananmu sudah dikirim: ${order.itemTitle}`, [
     `Halo ${order.buyerName},`,
     `${sellerName} sudah mengirim pesananmu (${order.itemTitle}).`,
     `Nomor resi: ${order.trackingNumber}`,

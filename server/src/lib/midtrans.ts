@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { env } from "./env.js";
+import { reportMessage } from "./sentry.js";
 
 /** Status internal pesanan. */
 export type OrderStatus = "PENDING" | "PAID" | "FAILED";
@@ -51,7 +52,10 @@ export async function createSnapTransaction(req: SnapRequest): Promise<{ token: 
     error_messages?: string[];
   };
   if (!res.ok || !body.token || !body.redirect_url) {
-    console.error("Midtrans Snap error", res.status, body);
+    reportMessage(`Midtrans Snap menolak transaksi (HTTP ${res.status})`, "error", {
+      area: "midtrans-snap",
+      extra: { httpStatus: res.status, orderCode: req.orderCode, errorMessages: body.error_messages },
+    });
     throw new MidtransError(
       res.status === 401
         ? "Server key Midtrans tidak valid. Periksa MIDTRANS_SERVER_KEY."

@@ -1,3 +1,5 @@
+// Harus paling awal: menginisialisasi Sentry sebelum modul lain dimuat.
+import { Sentry, sentryEnabled } from "./lib/sentry.js";
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -74,6 +76,10 @@ app.use((_req: Request, res: Response) => {
   res.status(404).json({ message: "Endpoint tidak ditemukan." });
 });
 
+// Sentry mencatat error tak tertangani (status 5xx) sebelum diubah jadi respons JSON di bawah.
+// Error validasi (4xx) tidak dikirim ke Sentry.
+if (sentryEnabled) Sentry.setupExpressErrorHandler(app);
+
 // Express 5 meneruskan error dari handler async ke sini secara otomatis.
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof ValidationError) {
@@ -97,6 +103,8 @@ const server = app.listen(env.port, () => {
 const shutdown = async () => {
   server.close();
   await prisma.$disconnect();
+  // Kirim sisa event Sentry yang masih antre sebelum proses berhenti.
+  if (sentryEnabled) await Sentry.close(2000);
   process.exit(0);
 };
 process.on("SIGINT", shutdown);
