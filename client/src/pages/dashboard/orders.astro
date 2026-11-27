@@ -147,7 +147,7 @@ const filters = [
   function shippingRow(order: Order) {
     const tr = document.createElement("tr");
     // Tanpa garis pemisah agar menyatu dengan baris pesanannya.
-    tr.className = "!border-t-0 max-md:block max-md:px-4 max-md:pb-4";
+    tr.className = "border-t-0! max-md:block max-md:px-4 max-md:pb-4";
     const td = document.createElement("td");
     td.colSpan = 6;
     td.className = "px-4 pb-4 max-md:block max-md:p-0";

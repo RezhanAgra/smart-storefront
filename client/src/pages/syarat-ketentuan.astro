@@ -5,7 +5,7 @@ import { siteOperator } from "../lib/site";
 const op = siteOperator();
 ---
 
-<LegalPage title="Syarat & Ketentuan" description="Aturan memakai smart-storefront untuk penjual dan pembeli." updated="25 November 2026">
+<LegalPage title="Syarat & Ketentuan" description="Aturan memakai smart-storefront untuk penjual dan pembeli." updated="27 November 2026">
   <p>
     smart-storefront adalah layanan halaman link-in-bio dan etalase produk yang dikelola oleh {op.name}. Dengan membuat akun atau membeli di
     halaman toko, kamu setuju dengan syarat di bawah.
@@ -15,7 +15,8 @@ const op = siteOperator();
   <ul>
     <li>Kamu bertanggung jawab menjaga kerahasiaan password dan semua aktivitas di akunmu.</li>
     <li>Username dipakai sebagai alamat toko dan harus tidak menyesatkan atau meniru pihak lain.</li>
-    <li>Kamu bisa menghapus akun kapan saja dari halaman Pengaturan.</li>
+    <li>Email harus aktif dan dikonfirmasi lewat tautan yang kami kirim. Pencairan dana baru bisa diajukan setelah email terverifikasi.</li>
+    <li>Kamu bisa menghapus akun kapan saja dari halaman Pengaturan, selama tidak ada pengajuan pencairan dana yang masih diproses.</li>
   </ul>
 
   <h2>Yang dijual</h2>
@@ -27,6 +28,20 @@ const op = siteOperator();
   </ul>
   <p>Kami dapat menyembunyikan item atau menonaktifkan toko yang melanggar aturan ini, dengan atau tanpa pemberitahuan lebih dulu.</p>
 
+  <h2>Larangan phishing dan penipuan</h2>
+  <p>Toko dan tautan di smart-storefront tidak boleh dipakai untuk:</p>
+  <ul>
+    <li>meniru bank, dompet digital, marketplace, kurir, instansi pemerintah, atau merek lain;</li>
+    <li>meminta password, kode OTP, PIN, data kartu, atau data login di luar proses pembayaran Midtrans;</li>
+    <li>mengarahkan pembeli ke halaman pembayaran palsu atau rekening pribadi untuk transaksi yang dimulai di toko ini;</li>
+    <li>menerima pembayaran tanpa niat mengirim barang atau memberikan produk digital yang dijanjikan.</li>
+  </ul>
+  <p>
+    Siapa pun bisa melaporkan toko lewat tombol <strong>Laporkan toko</strong> di bagian bawah halaman toko. Jika laporan terbukti atau ada indikasi
+    kuat penipuan, kami dapat menonaktifkan toko seketika. Selama toko nonaktif, halaman toko tertutup untuk pembeli, checkout tidak bisa
+    dilakukan, dan pengajuan pencairan dana ditahan sampai peninjauan selesai. Alasan penonaktifan ditampilkan di dashboard penjual.
+  </p>
+
   <h2>Pembayaran</h2>
   <ul>
     <li>Pembayaran online diproses oleh Midtrans. Pesanan dianggap lunas setelah Midtrans mengonfirmasi pembayaran.</li>
@@ -34,6 +49,21 @@ const op = siteOperator();
     <li>Produk digital bisa diunduh dari struk pesanan setelah lunas, maksimal 10 kali per pesanan.</li>
     <li>Pengembalian dana diatur di <a href="/kebijakan-refund">Kebijakan Refund</a>.</li>
   </ul>
+
+  <h2>Pencairan dana penjual</h2>
+  <ul>
+    <li>Saldo penjual adalah total pesanan yang sudah lunas, dikurangi pencairan yang sedang diproses atau sudah ditransfer.</li>
+    <li>Pencairan diajukan dari dashboard dengan nominal minimal Rp 50.000 dan tidak melebihi saldo tersedia.</li>
+    <li>Dana ditransfer secara manual oleh {op.name} ke rekening bank atau dompet digital yang kamu isi. Pastikan nomor dan nama pemilik rekening benar. Kami tidak bertanggung jawab atas transfer yang gagal atau salah tujuan karena data yang keliru.</li>
+    <li>Pengajuan dapat ditolak, misalnya karena data rekening tidak sesuai atau ada indikasi penipuan. Alasannya ditampilkan di riwayat pencairan, dan saldonya kembali tersedia.</li>
+    <li>Pesanan yang dikembalikan dananya ke pembeli (refund) dapat mengurangi saldo yang bisa dicairkan.</li>
+  </ul>
+
+  <h2>Pengiriman barang fisik</h2>
+  <p>
+    Untuk barang fisik, pembeli mengisi nomor WhatsApp/HP dan alamat pengiriman saat checkout. Penjual wajib mengirim barang ke alamat itu dan
+    mengisi nomor resi di dashboard. Nomor resi tampil di struk pembeli. Pengiriman, biaya kirim, dan kondisi barang menjadi tanggung jawab penjual.
+  </p>
 
   <h2>Batas tanggung jawab</h2>
   <p>

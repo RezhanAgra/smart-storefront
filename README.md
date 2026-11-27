@@ -5,14 +5,19 @@ Link-in-bio dan etalase produk untuk kreator dan UMKM. Satu halaman publik per u
 | Bagian | Teknologi |
 | --- | --- |
 | `server/` | Node.js, Express 5, Prisma 6, MongoDB, JWT (HTTP-only cookie), Multer (upload), Midtrans Snap, TypeScript strict |
-| `client/` | Astro 5 SSR (`@astrojs/node` standalone), Tailwind CSS 3, Chart.js 4, TypeScript strict |
+| `client/` | Astro 7 SSR (`@astrojs/node` standalone), Tailwind CSS 4 (`@tailwindcss/vite`), Chart.js 4, TypeScript strict |
 | `docker-compose.yml` | MongoDB 7 sebagai single-node replica set `rs0` (dibutuhkan Prisma) |
 
-> Prisma dikunci di versi 6 karena dukungan MongoDB belum tersedia stabil di Prisma 7+. Astro dikunci di versi 5 karena `@astrojs/tailwind` hanya mendukung Astro sampai versi 5.
+> Prisma dikunci di versi 6 karena dukungan MongoDB belum tersedia stabil di Prisma 7+. Dua dependensi CLI Prisma yang rentan (`effect`, `deepmerge-ts`) dinaikkan lewat `overrides` di `server/package.json`, sehingga `npm audit` bersih tanpa pindah ke Prisma 7.
+>
+> Tailwind 4 tidak memakai `tailwind.config.mjs`: tema (font, warna `night`) ada di blok `@theme` pada `client/src/styles/global.css`.
 
 ## Menjalankan secara lokal
 
-Butuh Node.js 20+ dan Docker.
+Butuh **Node.js 22.23.4 atau lebih baru** (syarat Astro 7.4; Astro menolak jalan di versi lebih lama) dan Docker. Server sendiri cukup Node 20+.
+
+Catatan lockfile client: `client/package-lock.json` dibuat di Linux agar mencatat dependensi WASM opsional Tailwind 4 (`@emnapi/*`) yang dibutuhkan `npm ci` di Docker. Jika lockfile dibuat ulang di macOS dan build Docker gagal dengan "Missing: @emnapi/... from lock file", buat ulang di container:
+`docker run --rm -v "$PWD/client":/w -w /w node:22-alpine npm install --package-lock-only`
 
 ```bash
 # 1. MongoDB (tunggu status "healthy", replica set diinisialisasi otomatis)
@@ -149,6 +154,7 @@ Username `login`, `logout`, `register`, `dashboard`, `order`, `demo`, `api`, `ad
 | `/dashboard/promo` | Kode promo: buat, aktif/nonaktif, hapus, lihat pemakaian |
 | `/dashboard/qr` | QR Code kasir menuju halaman toko: cetak poster, unduh PNG/SVG |
 | `/dashboard/payouts` | Saldo dan pengajuan pencairan dana |
+| `/terms`, `/privacy`, `/forgot-password` | Dialihkan (301) ke `/syarat-ketentuan`, `/kebijakan-privasi`, `/lupa-password` |
 | `/verify-email?token=` | Konfirmasi email dari tautan yang dikirim saat daftar |
 | `/admin` | Panel admin (role `ADMIN`): laporan, status toko, persetujuan pencairan |
 | `/dashboard/settings` | Foto profil, nama toko, bio, warna aksen, tautan sosial, ganti password, hapus akun |

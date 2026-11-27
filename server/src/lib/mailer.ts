@@ -65,8 +65,12 @@ export function sendOrderPaidEmails(order: PaidOrder, seller: { email: string; d
 }
 
 /** Dilempar ke pemanggil agar user tahu jika email reset gagal terkirim. */
-export function sendPasswordResetEmail(to: string, token: string): Promise<void> {
+export async function sendPasswordResetEmail(to: string, token: string): Promise<void> {
   const link = `${env.clientUrl}/reset-password?token=${token}`;
+  if (!transport) {
+    console.log(["", "=".repeat(72), `  RESET PASSWORD (SMTP belum dikonfigurasi) untuk ${to}`, `  ${link}`, "=".repeat(72), ""].join("\n"));
+    return;
+  }
   return send(to, "Atur ulang password smart-storefront", [
     `Kami menerima permintaan untuk mengatur ulang password akunmu.`,
     `Buka tautan ini dalam 1 jam: ${link}`,

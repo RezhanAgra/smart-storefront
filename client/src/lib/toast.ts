@@ -24,7 +24,7 @@ function region(): HTMLElement {
 export function toast(message: string, tone: Tone = "success"): void {
   const item = document.createElement("div");
   item.setAttribute("role", tone === "error" ? "alert" : "status");
-  item.className = `toast-in pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-2xl border bg-night-raised/95 px-4 py-3 text-sm shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur ${TONE[tone]}`;
+  item.className = `toast-in pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-2xl border bg-night-raised/95 px-4 py-3 text-sm shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-sm ${TONE[tone]}`;
 
   const text = document.createElement("p");
   text.className = "flex-1 pt-0.5";

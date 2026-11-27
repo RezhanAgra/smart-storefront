@@ -15,7 +15,7 @@ import { firstIssue, updateProfileSchema } from "../lib/schemas.js";
 const USERNAME = /^[a-z0-9]{3,30}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Nama yang bentrok dengan route statis di client Astro (/login, /dashboard, /404, dst).
-const RESERVED_USERNAMES = new Set(["login", "logout", "register", "dashboard", "order", "demo", "api", "admin", "verify-email", "404", "500"]);
+const RESERVED_USERNAMES = new Set(["login", "logout", "register", "dashboard", "order", "demo", "api", "admin", "verify-email", "terms", "privacy", "404", "500"]);
 
 /** Field user yang aman dikirim ke client (tanpa passwordHash). */
 export const publicUserSelect = {
@@ -172,6 +172,13 @@ export async function deleteAccount(req: Request, res: Response): Promise<void> 
   const user = await prisma.user.findUnique({ where: { id: req.userId }, select: { username: true } });
   if (user?.username === DEMO_USERNAME) throw new ValidationError("Akun demo tidak bisa dihapus dari sini.");
 
+  // Pengajuan yang sedang diproses admin ikut terhapus bersama akun (cascade), padahal dana mungkin sedang ditransfer.
+  const pendingPayouts = await prisma.payout.count({ where: { sellerId: req.userId, status: "PENDING" } });
+  if (pendingPayouts > 0) {
+    res.status(409).json({ message: "Masih ada pengajuan pencairan dana yang diproses. Hapus akun setelah pengajuan itu selesai." });
+    return;
+  }
+
   const files = await prisma.item.findMany({
     where: { userId: req.userId, digitalFileKey: { not: null } },
     select: { digitalFileKey: true },
@@ -263,7 +270,8 @@ export async function resendVerification(req: Request, res: Response): Promise<v
  * supaya endpoint ini tidak bisa dipakai menebak email yang terdaftar.
  */
 export async function forgotPassword(req: Request, res: Response): Promise<void> {
-  if (!mailEnabled()) {
+  // Tanpa SMTP: di development tautan dicetak ke console server; di production fitur ini ditolak dengan jelas.
+  if (!mailEnabled() && env.isProduction) {
     res.status(503).json({ message: "Reset password lewat email belum diaktifkan. Hubungi pengelola situs." });
     return;
   }

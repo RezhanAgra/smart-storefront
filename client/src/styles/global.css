@@ -1,6 +1,15 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Tema (Tailwind 4: ditulis di CSS, menggantikan tailwind.config.mjs). */
+@theme {
+  /* Inter untuk body dan angka (tabular figures rapi), Plus Jakarta Sans untuk heading. */
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans Variable", "Inter Variable", ui-sans-serif, sans-serif;
+  /* Khusus wordmark logo: Syne, geometris lebar dengan karakter kuat di bobot 800. */
+  --font-brand: "Syne Variable", "Plus Jakarta Sans Variable", ui-sans-serif, sans-serif;
+  --color-night: #070913;
+  --color-night-raised: #0d1122;
+}
 
 @layer base {
   html {
@@ -52,8 +61,9 @@
 
   .glass-card {
     background: rgba(255, 255, 255, 0.04);
+    /* Tulis tanpa awalan: Lightning CSS (Tailwind 4) menambahkan -webkit- untuk Safari. Jika keduanya ditulis,
+       hanya yang terakhir dipertahankan, dan Chrome tidak mengenali versi -webkit-. */
     backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow:
       0 8px 32px 0 rgba(0, 0, 0, 0.37),
@@ -66,15 +76,16 @@
   }
 
   .glass-input {
-    @apply block min-h-11 w-full rounded-xl border border-white/10 bg-white/[0.05] px-3.5 text-base text-white placeholder-slate-400 backdrop-blur-md transition-colors focus:border-indigo-400/60 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus-visible:outline-2 focus-visible:outline-indigo-300 disabled:opacity-50;
+    @apply block min-h-11 w-full rounded-xl border border-white/10 bg-white/[0.05] px-3.5 text-base text-white placeholder:text-slate-400 backdrop-blur-md transition-colors focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50;
   }
 
   /*
-   * CTA utama, satu-satunya tempat gradasi dipakai. Stop warna lebih gelap dari indigo-500/cyan-500
+   * CTA utama, satu-satunya tempat gradasi dipakai. Interpolasi sRGB (/srgb) sama dengan Tailwind 3,
+   * supaya kontras teks putih yang sudah diukur tetap berlaku (Tailwind 4 default-nya OKLab). Stop warna lebih gelap dari indigo-500/cyan-500
    * supaya teks putih tetap di atas kontras 4.5:1 di seluruh bidang gradasi.
    */
   .btn-glow {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 via-violet-600 to-cyan-700 font-semibold text-white transition-shadow duration-300 hover:shadow-[0_0_25px_rgba(99,102,241,0.5)] active:translate-y-px disabled:from-slate-600 disabled:via-slate-600 disabled:to-slate-600 disabled:shadow-none;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 bg-linear-to-r/srgb from-indigo-600 via-violet-600 to-cyan-700 font-semibold text-white transition-shadow duration-300 hover:shadow-[0_0_25px_rgba(99,102,241,0.5)] active:translate-y-px disabled:from-slate-600 disabled:via-slate-600 disabled:to-slate-600 disabled:shadow-none;
   }
 
   .btn-ghost {
@@ -137,6 +148,5 @@ dialog[open] .dialog-panel {
     background: #fff !important;
     border-color: #d4d4d8 !important;
     backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
   }
 }

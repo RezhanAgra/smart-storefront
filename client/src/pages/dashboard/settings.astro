@@ -156,27 +156,47 @@ const platforms = ["Instagram", "TikTok", "WhatsApp", "Shopee", "Tokopedia", "Yo
       </div>
     </form>
 
-    <form id="delete-form" class="mt-6 space-y-4 rounded-2xl border border-rose-400/30 bg-rose-500/[0.06] p-5 sm:p-8" novalidate aria-labelledby="delete-heading">
-      <h3 id="delete-heading" class="text-lg font-bold">Hapus akun</h3>
-      <p class="text-sm text-slate-300">
-        Halaman <span class="font-medium text-white">/{user.username}</span>, semua produk, riwayat pesanan, kode promo, analitik, dan file produk digital ikut terhapus permanen.
-        Pembeli lama tidak bisa lagi membuka struk atau mengunduh file. Tidak bisa dibatalkan.
+    <section aria-labelledby="danger-heading" class="mt-6 rounded-2xl border border-rose-400/30 bg-rose-500/[0.06] p-5 sm:p-8">
+      <h3 id="danger-heading" class="text-lg font-bold">Zona berbahaya</h3>
+      <p class="mt-2 text-sm text-slate-300">
+        Menghapus akun menghapus halaman <span class="font-medium text-white">/{user.username}</span>, semua produk, riwayat pesanan, kode promo,
+        analitik, riwayat pencairan, dan file produk digital secara permanen. Saldo yang belum dicairkan ikut hilang. Pembeli lama tidak bisa lagi
+        membuka struk atau mengunduh file. Tidak bisa dibatalkan.
       </p>
-      <div>
-        <label for="delete-confirm" class="label">Ketik username <span class="font-mono text-white">{user.username}</span> untuk konfirmasi</label>
-        <input id="delete-confirm" autocomplete="off" autocapitalize="none" spellcheck="false" required pattern={user.username} class="glass-input mt-1" />
-      </div>
-      <div>
-        <label for="delete-password" class="label">Password</label>
-        <input id="delete-password" type="password" autocomplete="current-password" required class="glass-input mt-1" />
-      </div>
-      <div class="flex flex-wrap items-center gap-3">
-        <button type="submit" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-rose-700 px-5 font-semibold text-white transition-colors hover:bg-rose-600 active:translate-y-px disabled:opacity-50">
-          Hapus akun permanen
-        </button>
+      <button
+        type="button"
+        id="delete-open"
+        class="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl border border-rose-400/40 px-5 font-semibold text-rose-100 transition-colors hover:bg-rose-500/15 active:translate-y-px"
+      >
+        Hapus akun permanen
+      </button>
+    </section>
+
+    <dialog
+      id="delete-dialog"
+      aria-labelledby="delete-heading"
+      class="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md overflow-y-auto bg-transparent p-0 text-slate-200 backdrop:bg-black/70 backdrop:backdrop-blur-md"
+    >
+      <form id="delete-form" class="dialog-panel glass-card space-y-4 rounded-3xl border-rose-400/30 bg-night-raised/80 p-6" novalidate>
+        <h3 id="delete-heading" class="text-xl font-bold">Hapus akun permanen?</h3>
+        <p class="text-sm text-slate-300">Semua data toko <span class="font-medium text-white">/{user.username}</span> akan hilang dan tidak bisa dipulihkan.</p>
+        <div>
+          <label for="delete-confirm" class="label">Ketik username <span class="font-mono text-white">{user.username}</span> untuk konfirmasi</label>
+          <input id="delete-confirm" autocomplete="off" autocapitalize="none" spellcheck="false" required pattern={user.username} class="glass-input mt-1" />
+        </div>
+        <div>
+          <label for="delete-password" class="label">Password saat ini</label>
+          <input id="delete-password" type="password" autocomplete="current-password" required class="glass-input mt-1" />
+        </div>
         <p role="alert" data-error class="text-sm text-rose-200"></p>
-      </div>
-    </form>
+        <div class="grid gap-2 sm:grid-cols-2">
+          <button type="submit" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-rose-700 px-5 font-semibold text-white transition-colors hover:bg-rose-600 active:translate-y-px disabled:opacity-50 sm:order-2">
+            Hapus akun
+          </button>
+          <button type="button" id="delete-cancel" class="btn-ghost sm:order-1">Batal</button>
+        </div>
+      </form>
+    </dialog>
   </main>
 </Base>
 
@@ -414,8 +434,24 @@ const platforms = ["Instagram", "TikTok", "WhatsApp", "Shopee", "Tokopedia", "Yo
     },
   );
 
+  // Hapus akun: tombol di Zona berbahaya membuka modal konfirmasi (username + password).
+  const deleteDialog = $<HTMLDialogElement>("#delete-dialog");
+  const deleteForm = $<HTMLFormElement>("#delete-form");
+  const deleteOpen = $<HTMLButtonElement>("#delete-open");
+  deleteOpen.addEventListener("click", () => {
+    deleteForm.reset();
+    deleteForm.querySelector<HTMLElement>("[data-error]")!.textContent = "";
+    deleteDialog.showModal();
+    $<HTMLInputElement>("#delete-confirm").focus();
+  });
+  $("#delete-cancel").addEventListener("click", () => deleteDialog.close());
+  deleteDialog.addEventListener("click", (e) => {
+    if (e.target === deleteDialog) deleteDialog.close();
+  });
+  deleteDialog.addEventListener("close", () => deleteOpen.focus());
+
   accountForm(
-    $<HTMLFormElement>("#delete-form"),
+    deleteForm,
     "Menghapus...",
     () => api("/auth/account", { method: "DELETE", body: JSON.stringify({ password: $<HTMLInputElement>("#delete-password").value }) }),
     () => location.assign("/"),

@@ -2,7 +2,7 @@
 import LegalPage from "../components/LegalPage.astro";
 ---
 
-<LegalPage title="Kebijakan Privasi" description="Data apa yang disimpan smart-storefront, untuk apa, dan cara menghapusnya." updated="25 November 2026">
+<LegalPage title="Kebijakan Privasi" description="Data apa yang disimpan smart-storefront, untuk apa, dan cara menghapusnya." updated="27 November 2026">
   <p>
     Halaman ini menjelaskan data yang kami simpan saat kamu membuat toko atau membeli di halaman toko, untuk apa data itu dipakai, dan cara
     menghapusnya.
@@ -10,24 +10,32 @@ import LegalPage from "../components/LegalPage.astro";
 
   <h2>Data penjual</h2>
   <ul>
-    <li><strong>Akun:</strong> username, email, dan password. Password disimpan dalam bentuk hash (bcrypt), bukan teks aslinya.</li>
+    <li><strong>Akun:</strong> username, email, dan password. Password disimpan dalam bentuk hash (bcrypt), bukan teks aslinya. Kami juga mencatat apakah email sudah dikonfirmasi.</li>
     <li><strong>Profil toko:</strong> nama toko, bio, foto profil, warna aksen, dan tautan sosial. Semua ini tampil publik di halaman tokomu.</li>
     <li><strong>Isi toko:</strong> produk, tautan, gambar, file produk digital, dan kode promo yang kamu buat.</li>
+    <li><strong>Pencairan dana:</strong> nama bank atau dompet digital, nomor rekening, nama pemilik rekening, dan nominal setiap pengajuan. Data ini hanya terlihat olehmu dan admin yang memproses transfer.</li>
   </ul>
 
   <h2>Data pembeli</h2>
   <ul>
-    <li>Nama, email, jumlah, dan catatan yang diisi saat checkout.</li>
+    <li>Nama, email, jumlah, catatan, dan kode promo yang diisi saat checkout.</li>
+    <li>Untuk barang fisik: nomor WhatsApp/HP dan alamat pengiriman. Alamat hanya terlihat oleh penjual toko tersebut untuk mengirim barang, dan tidak tampil di struk.</li>
     <li>Data ini dilihat oleh penjual toko tempat kamu membeli, supaya pesanan bisa diproses.</li>
-    <li>Nama dan email juga dikirim ke Midtrans untuk memproses pembayaran. Data kartu atau rekening diisi langsung di halaman Midtrans dan tidak pernah sampai ke server kami.</li>
+    <li>Nama, email, dan (untuk barang fisik) nomor HP juga dikirim ke Midtrans untuk memproses pembayaran. Data kartu atau rekening diisi langsung di halaman Midtrans dan tidak pernah sampai ke server kami.</li>
     <li>Struk pesanan bisa dibuka oleh siapa pun yang tahu kode pesanannya, jadi struk tidak menampilkan email atau catatan.</li>
   </ul>
+
+  <h2>Laporan toko</h2>
+  <p>
+    Jika kamu melaporkan sebuah toko, kami menyimpan alasan, penjelasan, dan email (jika kamu mengisinya) untuk ditinjau admin. Identitas pelapor
+    tidak ditampilkan ke penjual yang dilaporkan.
+  </p>
 
   <h2>Statistik kunjungan</h2>
   <p>
     Setiap kunjungan ke halaman toko dan klik pada item dicatat sebagai angka (jenis kejadian, item, dan waktu) untuk grafik di dashboard
     penjual. Kami tidak menyimpan alamat IP, perangkat, atau identitas pengunjung di catatan ini. Alamat IP hanya dipakai sementara di memori
-    server untuk membatasi jumlah permintaan (maksimal 15 menit) dan tidak disimpan.
+    server untuk membatasi jumlah permintaan (paling lama 1 jam, untuk batas laporan toko) dan tidak disimpan ke database.
   </p>
 
   <h2>Cookie</h2>
@@ -39,7 +47,7 @@ import LegalPage from "../components/LegalPage.astro";
   <h2>Pihak lain yang menerima data</h2>
   <ul>
     <li><strong>Midtrans</strong> (PT Midtrans): pemrosesan pembayaran.</li>
-    <li><strong>Penyedia email</strong>: pengiriman struk, notifikasi pesanan, dan tautan reset password.</li>
+    <li><strong>Penyedia email</strong>: pengiriman tautan verifikasi email, struk, notifikasi pesanan, nomor resi, dan tautan reset password.</li>
     <li><strong>Penyedia server</strong>: tempat aplikasi dan database berjalan.</li>
   </ul>
   <p>Kami tidak menjual data dan tidak membagikannya untuk iklan.</p>
@@ -47,7 +55,8 @@ import LegalPage from "../components/LegalPage.astro";
   <h2>Berapa lama data disimpan</h2>
   <p>
     Data akun, toko, dan pesanan disimpan selama akun penjual aktif. Penjual bisa menghapus akunnya sendiri di
-    <a href="/dashboard/settings">Pengaturan</a>, dan semua data toko, pesanan, statistik, serta file produk digitalnya ikut terhapus permanen.
+    <a href="/dashboard/settings">Pengaturan</a>, dan semua data toko, pesanan, statistik, riwayat pencairan, laporan terhadap tokonya, serta file
+    produk digitalnya ikut terhapus permanen. Akun yang masih punya pengajuan pencairan dalam proses baru bisa dihapus setelah pengajuan itu selesai.
     Salinan cadangan database ikut terhapus mengikuti jadwal rotasi cadangan.
   </p>
 

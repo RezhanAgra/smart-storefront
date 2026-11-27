@@ -27,7 +27,7 @@ const op = siteOperator();
       Pertanyaan tentang halaman ini:
       {
         op.hasEmail ? (
-          <a href={`mailto:${op.email}`} class="text-indigo-300 underline underline-offset-4 hover:text-indigo-200">
+          <a href={`mailto:${op.email}`} class="inline-flex min-h-11 items-center text-indigo-300 underline underline-offset-4 hover:text-indigo-200">
             {op.email}
           </a>
         ) : (
@@ -40,6 +40,9 @@ const op = siteOperator();
 </Base>
 
 <style>
+  /* Tailwind 4: blok <style> komponen diproses terpisah, jadi @apply butuh rujukan ke tema global. */
+  @reference "../styles/global.css";
+
   .legal :global(h2) {
     @apply pt-6 text-xl font-bold;
   }
